@@ -1,0 +1,8 @@
+__pycache__
+*.pth
+*.pt
+*.pth.tar
+*.pt.tar
+*.pth.gz
+*.pt.gz
+logs

@@ -173,7 +173,7 @@ tprint("使用流式加载方式处理数据集，只下载和处理4-5评分范
 # 配置参数
 dataset_name = "opencsg/Fineweb-Edu-Chinese-V2.1"
 split = "train"
-batch_size = 16
+batch_size = 1
 block_size = 512
 
 # 为了测试，创建一个小的流式数据集实例
@@ -201,9 +201,9 @@ chunk_size = batch_size * 100  # 每次加载100个批次的数据
 class ModuleConfig:
     block_size: int = block_size
     vocab_size: int = 50257
-    n_layer: int = 4
-    n_head: int = 4
-    n_embd: int = 512
+    n_layer: int = 36
+    n_head: int = 20
+    n_embd: int = 1080
 
 config = ModuleConfig()
 
@@ -407,8 +407,128 @@ train_loader = ChunkedDataLoader(
     device=device
 )
 
+# 定义文本生成函数
+def generate_text(model, enc, prompt="", max_tokens=100, temperature=1.0, top_k=50, device="cpu"):
+    """
+    使用训练好的模型生成文本
+    
+    Args:
+        model: 训练好的模型
+        enc: tokenizer编码器
+        prompt: 起始提示文本，可以为空
+        max_tokens: 最大生成token数量
+        temperature: 温度参数，控制生成文本的随机性，越高越随机
+        top_k: 只考虑概率最高的top_k个token
+        device: 计算设备
+        
+    Returns:
+        生成的文本
+    """
+    model.eval()
+    
+    # 编码输入提示
+    if prompt:
+        tokens = enc.encode(prompt)
+        if len(tokens) > model.config.block_size - max_tokens:
+            # 如果提示太长，只保留后面部分
+            tokens = tokens[-(model.config.block_size - max_tokens):]
+    else:
+        # 对于空提示，使用一个起始token作为种子
+        tokens = [50256]  # GPT-2的<|endoftext|> token，可作为起始点
+    
+    tokens = torch.tensor(tokens, dtype=torch.long, device=device).unsqueeze(0)  # [1, seq_len]
+    
+    # 确保tokens不是空张量
+    if tokens.size(1) == 0:
+        tokens = torch.tensor([[50256]], dtype=torch.long, device=device)  # 使用<|endoftext|>作为备选起始点
+    
+    with torch.no_grad():
+        for _ in range(max_tokens):
+            # 获取预测
+            if len(tokens[0]) > model.config.block_size:
+                # 如果序列太长，只保留后面的部分
+                tokens = tokens[:, -model.config.block_size:]
+            
+            # 前向传播
+            logits, _ = model(tokens)
+            
+            # 获取最后一个位置的预测
+            logits = logits[:, -1, :] / temperature
+            
+            # 应用top-k采样
+            if top_k > 0:
+                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+                logits[logits < v[:, [-1]]] = float('-inf')
+            
+            # 应用softmax获取概率分布
+            probs = F.softmax(logits, dim=-1)
+            
+            # 采样下一个token
+            next_token = torch.multinomial(probs, num_samples=1)
+            
+            # 追加到序列
+            tokens = torch.cat([tokens, next_token], dim=1)
+            
+            # 如果生成了结束标记，提前结束
+            if next_token.item() == enc.eot_token:
+                break
+    
+    # 解码生成的token序列
+    generated_tokens = tokens[0].tolist()
+    
+    # 如果有提示，去掉提示部分
+    if prompt:
+        prompt_length = len(enc.encode(prompt))
+        generated_tokens = generated_tokens[prompt_length:]
+    else:
+        # 对于空提示，去掉我们添加的起始token
+        generated_tokens = generated_tokens[1:]
+    
+    generated_text = enc.decode(generated_tokens)
+    return generated_text
+
+# 在训练循环中生成文本的辅助函数
+def generate_examples(model, enc, device, block_size, epoch=None):
+    """在当前epoch结束后生成示例文本"""
+    model.eval()  # 确保模型处于评估模式
+    
+    # 生成不同提示的文本
+    prompts = [
+        "今天天气真好，",
+        "人工智能在教育领域的应用，",
+        "中国传统文化是指",
+        "学习编程的最佳方法是",
+        ""  # 空提示，完全由模型自由生成
+    ]
+    
+    if epoch is not None:
+        tprint("\n" + "="*50)
+        tprint(f"Epoch {epoch+1} 生成文本示例：")
+        tprint("="*50)
+    else:
+        tprint("\n" + "="*50)
+        tprint("训练完成！生成示例文本：")
+        tprint("="*50)
+    
+    for prompt in prompts:
+        tprint(f"\n提示: {prompt if prompt else '(无提示)'}")
+        try:
+            generated = generate_text(
+                model=model,
+                enc=enc,
+                prompt=prompt,
+                max_tokens=min(100, block_size),  # 减少生成的token数，加快生成速度
+                temperature=0.8,
+                top_k=40,
+                device=device
+            )
+            tprint(f"生成: {generated}")
+        except Exception as e:
+            tprint(f"生成文本时发生错误: {str(e)}")
+        tprint("-"*50)
+
 # 训练循环
-num_epochs = 10
+num_epochs = 10000
 steps_per_epoch = 100  # 每个epoch训练多少批次
 
 # 记录上次保存模型的时间
@@ -471,6 +591,9 @@ for epoch in range(num_epochs):
         }, checkpoint_path)
         tprint(f"检查点已保存到 {checkpoint_path}，距上次保存: {time_since_last_save:.2f}秒")
         last_save_time = current_time
+    
+    # 每个epoch结束后生成示例文本
+    generate_examples(model, enc, device, block_size, epoch)
 
 # 保存模型
 model_save_path = "chinese_lm_model.pt"
@@ -481,106 +604,5 @@ torch.save({
 }, model_save_path)
 tprint(f"模型已保存到 {model_save_path}")
 
-# 定义文本生成函数
-def generate_text(model, enc, prompt="", max_tokens=100, temperature=1.0, top_k=50, device="cpu"):
-    """
-    使用训练好的模型生成文本
-    
-    Args:
-        model: 训练好的模型
-        enc: tokenizer编码器
-        prompt: 起始提示文本，可以为空
-        max_tokens: 最大生成token数量
-        temperature: 温度参数，控制生成文本的随机性，越高越随机
-        top_k: 只考虑概率最高的top_k个token
-        device: 计算设备
-        
-    Returns:
-        生成的文本
-    """
-    model.eval()
-    
-    # 编码输入提示
-    if prompt:
-        tokens = enc.encode(prompt)
-        if len(tokens) > model.config.block_size - max_tokens:
-            # 如果提示太长，只保留后面部分
-            tokens = tokens[-(model.config.block_size - max_tokens):]
-    else:
-        # 对于空提示，使用一个起始token作为种子
-        # 使用编码器的BOS token（如果有）或者任意常见词的token
-        tokens = [50256]  # GPT-2的<|endoftext|> token，可作为起始点
-    
-    tokens = torch.tensor(tokens, dtype=torch.long, device=device).unsqueeze(0)  # [1, seq_len]
-    
-    with torch.no_grad():
-        for _ in range(max_tokens):
-            # 获取预测
-            if len(tokens[0]) > model.config.block_size:
-                # 如果序列太长，只保留后面的部分
-                tokens = tokens[:, -model.config.block_size:]
-            
-            logits, _ = model(tokens)
-            
-            # 获取最后一个位置的预测
-            logits = logits[:, -1, :] / temperature
-            
-            # 应用top-k采样
-            if top_k > 0:
-                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                logits[logits < v[:, [-1]]] = float('-inf')
-            
-            # 应用softmax获取概率分布
-            probs = F.softmax(logits, dim=-1)
-            
-            # 采样下一个token
-            next_token = torch.multinomial(probs, num_samples=1)
-            
-            # 追加到序列
-            tokens = torch.cat([tokens, next_token], dim=1)
-            
-            # 如果生成了结束标记，提前结束
-            if next_token.item() == enc.eot_token:
-                break
-    
-    # 解码生成的token序列
-    generated_tokens = tokens[0].tolist()
-    
-    # 如果有提示，去掉提示部分
-    if prompt:
-        prompt_length = len(enc.encode(prompt))
-        generated_tokens = generated_tokens[prompt_length:]
-    else:
-        # 对于空提示，去掉我们添加的起始token
-        generated_tokens = generated_tokens[1:]
-    
-    generated_text = enc.decode(generated_tokens)
-    return generated_text
-
-# 在训练循环结束后生成示例文本
-tprint("\n" + "="*50)
-tprint("训练完成！生成示例文本：")
-tprint("="*50)
-
-# 生成不同提示的文本
-prompts = [
-    "今天天气真好，",
-    "人工智能在教育领域的应用，",
-    "中国传统文化是指",
-    "学习编程的最佳方法是",
-    ""  # 空提示，完全由模型自由生成
-]
-
-for prompt in prompts:
-    tprint(f"\n提示: {prompt if prompt else '(无提示)'}")
-    generated = generate_text(
-        model=model,
-        enc=enc,
-        prompt=prompt,
-        max_tokens=block_size,
-        temperature=0.8,
-        top_k=40,
-        device=device
-    )
-    tprint(f"生成: {generated}")
-    tprint("-"*50)
+# 训练结束后生成示例文本
+generate_examples(model, enc, device, block_size)
