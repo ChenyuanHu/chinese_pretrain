@@ -24,6 +24,15 @@ if torch.cuda.is_available():
 
 # 使用tiktoken编码器
 enc = tiktoken.get_encoding("gpt2")
+# 配置特殊token的处理
+allowed_special = {"<|endoftext|>"}  # 允许的特殊token
+disallowed_special = ()  # 禁用所有特殊token的检查
+
+def encode_with_special(text):
+    return enc.encode(text, allowed_special=allowed_special, disallowed_special=disallowed_special)
+
+def decode_with_special(tokens):
+    return enc.decode(tokens)
 
 # 数据集参数
 batch_size = 1
@@ -33,6 +42,7 @@ block_size = 512
 num_epochs = 10000
 steps_per_epoch = 1000  # 每个epoch训练多少批次
 gradient_accumulation_steps = 4  # 梯度累积步数
+save_interval_sec = 1800  # 每n秒保存一次模型
 
 # 模型参数
 class ModuleConfig:
@@ -59,7 +69,7 @@ def next_x_y(device):
     xs = []
     ys = []
     for text in texts:
-        tokens = enc.encode(text)
+        tokens = encode_with_special(text)
         if len(tokens) < block_size + 1:
             tokens = tokens + [enc.eot_token] * (block_size + 1 - len(tokens))
         else:
@@ -290,7 +300,7 @@ def generate_text(model, enc, prompt="", max_tokens=100, temperature=1.0, top_k=
     
     # 编码输入提示
     if prompt:
-        tokens = enc.encode(prompt)
+        tokens = encode_with_special(prompt)
         if len(tokens) > model.config.block_size - max_tokens:
             # 如果提示太长，只保留后面部分
             tokens = tokens[-(model.config.block_size - max_tokens):]
@@ -340,13 +350,13 @@ def generate_text(model, enc, prompt="", max_tokens=100, temperature=1.0, top_k=
     
     # 如果有提示，去掉提示部分
     if prompt:
-        prompt_length = len(enc.encode(prompt))
+        prompt_length = len(encode_with_special(prompt))
         generated_tokens = generated_tokens[prompt_length:]
     else:
         # 对于空提示，去掉我们添加的起始token
         generated_tokens = generated_tokens[1:]
     
-    generated_text = enc.decode(generated_tokens)
+    generated_text = decode_with_special(generated_tokens)
     return generated_text
 
 # 在训练循环中生成文本的辅助函数
@@ -397,7 +407,29 @@ if not os.path.exists(checkpoint_dir):
     os.makedirs(checkpoint_dir)
     tprint(f"创建检查点目录: {checkpoint_dir}")
 
-for epoch in range(num_epochs):
+# 检查是否存在checkpoint文件
+def get_latest_checkpoint():
+    checkpoint_files = glob.glob(os.path.join(checkpoint_dir, "checkpoint_epoch_*.pt"))
+    if not checkpoint_files:
+        return None
+    # 按文件修改时间排序，获取最新的checkpoint
+    latest_checkpoint = max(checkpoint_files, key=os.path.getmtime)
+    return latest_checkpoint
+
+# 尝试加载最新的checkpoint
+latest_checkpoint = get_latest_checkpoint()
+start_epoch = 0
+if latest_checkpoint:
+    tprint(f"发现最新的checkpoint: {latest_checkpoint}")
+    checkpoint = torch.load(latest_checkpoint)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    start_epoch = checkpoint['epoch']
+    tprint(f"成功加载checkpoint，将从epoch {start_epoch} 继续训练")
+else:
+    tprint("未找到checkpoint，将从头开始训练")
+
+for epoch in range(start_epoch, num_epochs):
     model.train()
     t0 = time.time()
     total_train_loss = 0
@@ -445,7 +477,7 @@ for epoch in range(num_epochs):
     current_time = time.time()
     time_since_last_save = current_time - last_save_time
     
-    if time_since_last_save > 600:  # 如果超过10分钟（600秒）
+    if time_since_last_save > save_interval_sec:  # 如果超过n秒
         checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch+1}.pt")
         torch.save({
             'epoch': epoch + 1,
