@@ -42,29 +42,38 @@ config = ModuleConfig()
 
 tprint("使用流式加载方式处理数据集，只下载和处理4-5评分范围的高质量内容...")
 dataset = load_dataset("opencsg/Fineweb-Edu-Chinese-V2.1", data_dir = "4_5", split="train", streaming=True)
-dataset_batch = dataset.batch(batch_size=batch_size)
+dataset_batch = iter(dataset.batch(batch_size=batch_size))
 
-def next_x_y(dataset_batch, device, enc):
+def next_x_y(device):
     item = next(dataset_batch)
-    text = item["text"]
-    tokens = enc.encode(text)
-    if len(tokens) < block_size + 1:
-        tokens = tokens + [enc.eot_token] * (block_size + 1 - len(tokens))
-    else:
-        tokens = tokens[:block_size + 1]
+    texts = item["text"]
 
-    x = torch.tensor(tokens[:-1], dtype=torch.long, device=device)
-    y = torch.tensor(tokens[1:], dtype=torch.long, device=device)
-    return x, y
+    xs = []
+    ys = []
+    for text in texts:
+        tokens = enc.encode(text)
+        if len(tokens) < block_size + 1:
+            tokens = tokens + [enc.eot_token] * (block_size + 1 - len(tokens))
+        else:
+            tokens = tokens[:block_size + 1]
+        
+        x = tokens[:-1]
+        y = tokens[1:]
+        xs.append(x)
+        ys.append(y)
+
+    xs = torch.tensor(xs, dtype=torch.long, device=device)
+    ys = torch.tensor(ys, dtype=torch.long, device=device)
+
+    return xs, ys
 
 # 创建一个验证集，方便模型评估
 val_dataset = []
 for i in range(50):
-    x, y = next_x_y(dataset_batch, None, enc)
-    val_dataset.append((x, y))
+    x, y = next_x_y(None)
+    val_dataset.append((x[0], y[0]))
 
 val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-
 
 class NewGELU(nn.Module):
     """Careful there are a few versions of GeLU, this one is the exact one used by OpenAI"""
@@ -398,7 +407,7 @@ for epoch in range(num_epochs):
     
     for step in range(steps_per_epoch):
         # 获取下一批数据
-        x, y = next_x_y(dataset_batch, device, enc)
+        x, y = next_x_y(device)
         
         # 前向传播
         logits, loss = model(x, y)
