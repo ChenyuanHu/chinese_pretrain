@@ -70,7 +70,7 @@ class StreamingChineseDataset(IterableDataset):
 
 
 class ChunkedDataLoader:
-    """高效的数据加载器，每次只加载部分数据到内存中"""
+    """高效的数据加载器，每次只加载部分数据到内存中，确保不重复使用数据并能完整遍历数据集"""
     
     def __init__(self, dataset_name, split, batch_size, block_size, enc, 
                  chunk_size=1000, device="cpu"):
@@ -90,17 +90,29 @@ class ChunkedDataLoader:
         self.current_buffer = []
         self.current_position = 0
         
+        # 数据集遍历进度跟踪
+        self.samples_processed = 0  # 已处理的原始样本数量
+        self.samples_generated = 0  # 生成的训练样本数量（可能多于原始样本）
+        self.epoch_count = 0  # 完整遍历数据集的次数
+        self.estimated_dataset_size = None  # 估计的数据集大小
+        
         # 填充初始缓冲区
         self._fill_buffer()
     
     def _fill_buffer(self):
-        """填充数据缓冲区"""
+        """填充数据缓冲区，确保加载未处理过的样本"""
         self.current_buffer = []
         self.current_position = 0
         
         # 从流式数据集加载chunk_size个样本或直到耗尽
         try:
+            # 记录当前批次生成的样本数
+            samples_added_to_buffer = 0
+            
             for i, item in enumerate(islice(self.ds, self.chunk_size)):
+                # 原始样本计数增加
+                self.samples_processed += 1
+                
                 # 根据数据集文档和截图，字段名应该是 "text"
                 text = item["text"]
                 tokens = self.enc.encode(text)
@@ -111,19 +123,38 @@ class ChunkedDataLoader:
                         if j + self.block_size + 1 <= len(tokens):
                             chunk = tokens[j:j + self.block_size + 1]
                             self.current_buffer.append(chunk)
+                            samples_added_to_buffer += 1
+                            self.samples_generated += 1
                 else:
                     # 短文本填充
                     padded_tokens = tokens + [self.enc.eot_token] * (self.block_size + 1 - len(tokens))
                     padded_tokens = padded_tokens[:self.block_size + 1]
                     self.current_buffer.append(padded_tokens)
+                    samples_added_to_buffer += 1
+                    self.samples_generated += 1
                 
                 if len(self.current_buffer) >= self.chunk_size:
                     break
+                    
+            tprint(f"加载了 {samples_added_to_buffer} 个样本到缓冲区 (原始文档: {i+1}个，总处理文档: {self.samples_processed}个)")
+                
         except StopIteration:
-            # 如果数据集已经被消耗完，则重新启动流
+            # 数据集已经被完全遍历
+            if self.estimated_dataset_size is None:
+                self.estimated_dataset_size = self.samples_processed
+                tprint(f"估计数据集大小: {self.estimated_dataset_size} 个文档")
+            
+            # 完成一个完整的遍历周期
+            self.epoch_count += 1
+            tprint(f"【重要】完成第 {self.epoch_count} 次数据集完整遍历！重置数据流...")
+            
+            # 重置进度计数（但保留总样本数统计）并重新开始流
+            self.samples_processed = 0
             self.ds = load_dataset(self.dataset_name, data_dir = "4_5", split=self.split, streaming=True)
             
-        tprint(f"加载了 {len(self.current_buffer)} 个样本到缓冲区")
+            # 如果当前缓冲区为空，则递归调用以填充缓冲区
+            if not self.current_buffer:
+                self._fill_buffer()
         
         # 如果缓冲区为空，说明数据集可能为空
         if not self.current_buffer:
@@ -495,9 +526,9 @@ def generate_examples(model, enc, device, block_size, epoch=None):
     # 生成不同提示的文本
     prompts = [
         "今天天气真好，",
-        "人工智能在教育领域的应用，",
-        "中国传统文化是指",
-        "学习编程的最佳方法是",
+        # "人工智能在教育领域的应用，",
+        # "中国传统文化是指",
+        # "学习编程的最佳方法是",
         ""  # 空提示，完全由模型自由生成
     ]
     
@@ -518,7 +549,7 @@ def generate_examples(model, enc, device, block_size, epoch=None):
                 enc=enc,
                 prompt=prompt,
                 max_tokens=min(100, block_size),  # 减少生成的token数，加快生成速度
-                temperature=0.8,
+                temperature=0.1,
                 top_k=40,
                 device=device
             )
@@ -530,6 +561,7 @@ def generate_examples(model, enc, device, block_size, epoch=None):
 # 训练循环
 num_epochs = 10000
 steps_per_epoch = 100  # 每个epoch训练多少批次
+gradient_accumulation_steps = 4  # 梯度累积步数，相当于batch_size*4的效果
 
 # 记录上次保存模型的时间
 last_save_time = time.time()
@@ -545,22 +577,34 @@ for epoch in range(num_epochs):
     total_train_loss = 0
     total_train_tokens = 0
     
+    optimizer.zero_grad()  # 在epoch开始时重置梯度
+    
     for step in range(steps_per_epoch):
         # 获取下一批数据
         x, y = train_loader.next_batch()
         
-        # 前向和后向传播
+        # 前向传播
         logits, loss = model(x, y)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        
+        # 缩放损失以适应梯度累积
+        scaled_loss = loss / gradient_accumulation_steps
+        scaled_loss.backward()
         
         # 累计损失和token数
         total_train_loss += loss.item() * y.numel()
         total_train_tokens += y.numel()
         
-        if step % 10 == 0:
-            tprint(f"Epoch {epoch+1}, Step {step+1}/{steps_per_epoch}, Loss: {loss.item():.4f}")
+        # 梯度累积：每 gradient_accumulation_steps 步进行一次更新
+        if (step + 1) % gradient_accumulation_steps == 0 or (step + 1 == steps_per_epoch):
+            optimizer.step()
+            optimizer.zero_grad()
+            
+            # 每10个累积步骤打印一次，这样仍然保持与原来相似的日志频率
+            if step % (10 * gradient_accumulation_steps) < gradient_accumulation_steps:
+                tprint(f"Epoch {epoch+1}, Step {step+1}/{steps_per_epoch}, Loss: {loss.item():.4f}, 有效批次大小: {batch_size*gradient_accumulation_steps}")
+        elif step % 10 == 0:
+            # 在非更新步骤，也保持一定频率的日志打印
+            tprint(f"Epoch {epoch+1}, Step {step+1}/{steps_per_epoch}, Loss: {loss.item():.4f} (累积中)")
     
     # 计算平均训练损失和困惑度
     avg_train_loss = total_train_loss / total_train_tokens
@@ -574,6 +618,7 @@ for epoch in range(num_epochs):
     tprint(f"Epoch [{epoch+1}/{num_epochs}], 用时: {(t1-t0):.2f}秒")
     tprint(f"训练损失: {avg_train_loss:.4f}, 训练困惑度: {train_ppl:.4f}")
     tprint(f"验证损失: {metrics['loss']:.4f}, 验证困惑度: {metrics['perplexity']:.4f}")
+    tprint(f"数据集进度: 已处理 {train_loader.samples_processed}/{train_loader.estimated_dataset_size or '未知'} 个文档, 完整遍历次数: {train_loader.epoch_count}")
     
     # 检查是否需要保存检查点
     current_time = time.time()
@@ -588,6 +633,11 @@ for epoch in range(num_epochs):
             'train_loss': avg_train_loss,
             'val_loss': metrics['loss'],
             'config': config,
+            'data_processed': {
+                'samples_processed': train_loader.samples_processed,
+                'samples_generated': train_loader.samples_generated,
+                'epoch_count': train_loader.epoch_count
+            }
         }, checkpoint_path)
         tprint(f"检查点已保存到 {checkpoint_path}，距上次保存: {time_since_last_save:.2f}秒")
         last_save_time = current_time
