@@ -421,11 +421,16 @@ latest_checkpoint = get_latest_checkpoint()
 start_epoch = 0
 if latest_checkpoint:
     tprint(f"发现最新的checkpoint: {latest_checkpoint}")
-    checkpoint = torch.load(latest_checkpoint)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    start_epoch = checkpoint['epoch']
-    tprint(f"成功加载checkpoint，将从epoch {start_epoch} 继续训练")
+    try:
+        checkpoint = torch.load(latest_checkpoint, weights_only=True, map_location=device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        start_epoch = checkpoint.get('epoch', 0)  # 使用get方法安全获取epoch
+        tprint(f"成功加载checkpoint，将从epoch {start_epoch} 继续训练")
+    except Exception as e:
+        tprint(f"加载checkpoint时出错: {str(e)}")
+        tprint("将从头开始训练")
+        start_epoch = 0
 else:
     tprint("未找到checkpoint，将从头开始训练")
 
@@ -478,29 +483,35 @@ for epoch in range(start_epoch, num_epochs):
     time_since_last_save = current_time - last_save_time
     
     if time_since_last_save > save_interval_sec:  # 如果超过n秒
-        checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch+1}.pt")
-        torch.save({
-            'epoch': epoch + 1,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'train_loss': avg_train_loss,
-            'val_loss': metrics['loss'],
-            'config': config,
-        }, checkpoint_path)
-        tprint(f"检查点已保存到 {checkpoint_path}，距上次保存: {time_since_last_save:.2f}秒")
-        last_save_time = current_time
+        try:
+            checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch+1}.pt")
+            save_dict = {
+                'epoch': epoch + 1,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'train_loss': avg_train_loss,
+                'val_loss': metrics['loss'],
+            }
+            torch.save(save_dict, checkpoint_path)
+            tprint(f"检查点已保存到 {checkpoint_path}，距上次保存: {time_since_last_save:.2f}秒")
+            last_save_time = current_time
+        except Exception as e:
+            tprint(f"保存checkpoint时出错: {str(e)}")
     
     # 每个epoch结束后生成示例文本
     generate_examples(model, enc, device, block_size, epoch)
 
 # 保存模型
 model_save_path = "chinese_lm_model.pt"
-torch.save({
-    'model_state_dict': model.state_dict(),
-    'optimizer_state_dict': optimizer.state_dict(),
-    'config': config,
-}, model_save_path)
-tprint(f"模型已保存到 {model_save_path}")
+try:
+    save_dict = {
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+    }
+    torch.save(save_dict, model_save_path)
+    tprint(f"模型已保存到 {model_save_path}")
+except Exception as e:
+    tprint(f"保存最终模型时出错: {str(e)}")
 
 # 训练结束后生成示例文本
 generate_examples(model, enc, device, block_size)
