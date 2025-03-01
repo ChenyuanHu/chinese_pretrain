@@ -416,21 +416,34 @@ def get_latest_checkpoint():
     latest_checkpoint = max(checkpoint_files, key=os.path.getmtime)
     return latest_checkpoint
 
+# 添加ModuleConfig到安全globals列表中
+torch.serialization.add_safe_globals([ModuleConfig])
+
 # 尝试加载最新的checkpoint
 latest_checkpoint = get_latest_checkpoint()
 start_epoch = 0
 if latest_checkpoint:
     tprint(f"发现最新的checkpoint: {latest_checkpoint}")
     try:
+        # 首先尝试使用weights_only=True加载
         checkpoint = torch.load(latest_checkpoint, weights_only=True, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        start_epoch = checkpoint.get('epoch', 0)  # 使用get方法安全获取epoch
+        start_epoch = checkpoint.get('epoch', 0)
         tprint(f"成功加载checkpoint，将从epoch {start_epoch} 继续训练")
     except Exception as e:
-        tprint(f"加载checkpoint时出错: {str(e)}")
-        tprint("将从头开始训练")
-        start_epoch = 0
+        tprint(f"使用weights_only=True加载失败，尝试完整加载...")
+        try:
+            # 如果失败，尝试完整加载
+            checkpoint = torch.load(latest_checkpoint, map_location=device)
+            model.load_state_dict(checkpoint['model_state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            start_epoch = checkpoint.get('epoch', 0)
+            tprint(f"成功加载checkpoint，将从epoch {start_epoch} 继续训练")
+        except Exception as e:
+            tprint(f"加载checkpoint完全失败: {str(e)}")
+            tprint("将从头开始训练")
+            start_epoch = 0
 else:
     tprint("未找到checkpoint，将从头开始训练")
 
