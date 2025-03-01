@@ -15,220 +15,21 @@ import os
 # 导入日志模块
 from log import tprint
 
+tprint("开始训练...")
+
 # 设置随机种子以确保可重复性
 torch.manual_seed(42)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(42)
 
-
-class StreamingChineseDataset(IterableDataset):
-    """流式加载中文数据集，避免将整个数据集加载到内存中"""
-    
-    def __init__(self, dataset_name, split, block_size=512, enc=None, max_samples=None):
-        self.dataset_name = dataset_name
-        self.split = split
-        self.block_size = block_size
-        self.enc = enc
-        self.max_samples = max_samples
-        self.vocab_size = 50257 if enc else None
-        # 加载流式数据集，直接选择4-5评分范围的高质量内容
-        tprint(f"加载数据集 {dataset_name}，评分范围: 4-5")
-        self.ds = load_dataset(dataset_name, data_dir = "4_5", split=split, streaming=True)
-    
-    def __iter__(self):
-        sample_count = 0
-        
-        for item in self.ds:
-            if self.max_samples is not None and sample_count >= self.max_samples:
-                break
-                
-            # 根据数据集文档和截图，字段名应该是 "text"
-            text = item["text"]
-            tokens = self.enc.encode(text)
-            
-            if len(tokens) >= self.block_size + 1:  # 需要至少block_size+1个token用于x和y
-                # 为了提高效率，长文本可以提供多个训练样本
-                for i in range(0, len(tokens) - self.block_size, self.block_size // 2):  # 使用50%的滑动窗口
-                    if i + self.block_size + 1 <= len(tokens):
-                        chunk = tokens[i:i + self.block_size + 1]
-                        x = torch.tensor(chunk[:-1], dtype=torch.long)
-                        y = torch.tensor(chunk[1:], dtype=torch.long)
-                        yield x, y
-                        sample_count += 1
-                        
-                        if self.max_samples is not None and sample_count >= self.max_samples:
-                            break
-            else:
-                # 对于短文本，填充到block_size+1
-                padded_tokens = tokens + [self.enc.eot_token] * (self.block_size + 1 - len(tokens))
-                padded_tokens = padded_tokens[:self.block_size + 1]  # 确保长度不超过block_size+1
-                
-                x = torch.tensor(padded_tokens[:-1], dtype=torch.long)
-                y = torch.tensor(padded_tokens[1:], dtype=torch.long)
-                yield x, y
-                sample_count += 1
-
-
-class ChunkedDataLoader:
-    """高效的数据加载器，每次只加载部分数据到内存中，确保不重复使用数据并能完整遍历数据集"""
-    
-    def __init__(self, dataset_name, split, batch_size, block_size, enc, 
-                 chunk_size=1000, device="cpu"):
-        self.dataset_name = dataset_name
-        self.split = split
-        self.batch_size = batch_size
-        self.block_size = block_size
-        self.enc = enc
-        self.chunk_size = chunk_size  # 每次加载到内存中的样本数
-        self.device = device
-        
-        # 使用流式数据集，直接加载4-5评分范围的高质量内容
-        tprint(f"加载数据集 {dataset_name}，评分范围: 4-5")
-        self.ds = load_dataset(dataset_name, data_dir = "4_5", split=split, streaming=True)
-        
-        # 当前加载的数据块
-        self.current_buffer = []
-        self.current_position = 0
-        
-        # 数据集遍历进度跟踪
-        self.samples_processed = 0  # 已处理的原始样本数量
-        self.samples_generated = 0  # 生成的训练样本数量（可能多于原始样本）
-        self.epoch_count = 0  # 完整遍历数据集的次数
-        self.estimated_dataset_size = None  # 估计的数据集大小
-        
-        # 填充初始缓冲区
-        self._fill_buffer()
-    
-    def _fill_buffer(self):
-        """填充数据缓冲区，确保加载未处理过的样本"""
-        self.current_buffer = []
-        self.current_position = 0
-        
-        # 从流式数据集加载chunk_size个样本或直到耗尽
-        try:
-            # 记录当前批次生成的样本数
-            samples_added_to_buffer = 0
-            
-            for i, item in enumerate(islice(self.ds, self.chunk_size)):
-                # 原始样本计数增加
-                self.samples_processed += 1
-                
-                # 根据数据集文档和截图，字段名应该是 "text"
-                text = item["text"]
-                tokens = self.enc.encode(text)
-                
-                if len(tokens) >= self.block_size + 1:
-                    # 长文本可以提供多个训练样本
-                    for j in range(0, min(len(tokens) - self.block_size, self.block_size * 2), self.block_size // 2):
-                        if j + self.block_size + 1 <= len(tokens):
-                            chunk = tokens[j:j + self.block_size + 1]
-                            self.current_buffer.append(chunk)
-                            samples_added_to_buffer += 1
-                            self.samples_generated += 1
-                else:
-                    # 短文本填充
-                    padded_tokens = tokens + [self.enc.eot_token] * (self.block_size + 1 - len(tokens))
-                    padded_tokens = padded_tokens[:self.block_size + 1]
-                    self.current_buffer.append(padded_tokens)
-                    samples_added_to_buffer += 1
-                    self.samples_generated += 1
-                
-                if len(self.current_buffer) >= self.chunk_size:
-                    break
-                    
-            tprint(f"加载了 {samples_added_to_buffer} 个样本到缓冲区 (原始文档: {i+1}个，总处理文档: {self.samples_processed}个)")
-                
-        except StopIteration:
-            # 数据集已经被完全遍历
-            if self.estimated_dataset_size is None:
-                self.estimated_dataset_size = self.samples_processed
-                tprint(f"估计数据集大小: {self.estimated_dataset_size} 个文档")
-            
-            # 完成一个完整的遍历周期
-            self.epoch_count += 1
-            tprint(f"【重要】完成第 {self.epoch_count} 次数据集完整遍历！重置数据流...")
-            
-            # 重置进度计数（但保留总样本数统计）并重新开始流
-            self.samples_processed = 0
-            self.ds = load_dataset(self.dataset_name, data_dir = "4_5", split=self.split, streaming=True)
-            
-            # 如果当前缓冲区为空，则递归调用以填充缓冲区
-            if not self.current_buffer:
-                self._fill_buffer()
-        
-        # 如果缓冲区为空，说明数据集可能为空
-        if not self.current_buffer:
-            raise ValueError("无法加载数据，请检查数据集")
-    
-    def next_batch(self):
-        """获取下一个批次的数据"""
-        if self.current_position + self.batch_size > len(self.current_buffer):
-            # 需要重新填充缓冲区
-            self._fill_buffer()
-        
-        # 准备批次数据
-        batch_tokens = self.current_buffer[self.current_position:self.current_position + self.batch_size]
-        batch_size = len(batch_tokens)
-        
-        # 如果不足一个完整批次，填充到批次大小
-        if batch_size < self.batch_size:
-            # 复制第一个样本填充剩余空间
-            padding = [batch_tokens[0]] * (self.batch_size - batch_size)
-            batch_tokens.extend(padding)
-        
-        # 转换为张量
-        batch_array = np.array(batch_tokens)
-        x = torch.tensor(batch_array[:, :-1], dtype=torch.long, device=self.device)
-        y = torch.tensor(batch_array[:, 1:], dtype=torch.long, device=self.device)
-        
-        # 更新位置指针
-        self.current_position += self.batch_size
-        
-        return x, y
-    
-    def __iter__(self):
-        """支持迭代器接口，每次迭代返回一个批次"""
-        while True:
-            try:
-                yield self.next_batch()
-            except ValueError:
-                # 如果数据集耗尽且无法重新填充，则结束迭代
-                break
-
-
 # 使用tiktoken编码器
 enc = tiktoken.get_encoding("gpt2")
 
-tprint("使用流式加载方式处理数据集，只下载和处理4-5评分范围的高质量内容...")
-
-# 配置参数
-dataset_name = "opencsg/Fineweb-Edu-Chinese-V2.1"
-split = "train"
+# 数据集参数
 batch_size = 1
 block_size = 512
 
-# 为了测试，创建一个小的流式数据集实例
-sample_dataset = StreamingChineseDataset(
-    dataset_name=dataset_name,
-    split=split,
-    block_size=block_size,
-    enc=enc,
-    max_samples=100  # 仅用于测试
-)
-
-# 创建一个验证集，方便模型评估
-val_dataset = []
-for i, (x, y) in enumerate(islice(sample_dataset, 50)):  # 取50个样本作为验证集
-    val_dataset.append((x, y))
-    if i >= 49:
-        break
-
-val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-
-# 为训练创建高效的数据加载器
-chunk_size = batch_size * 100  # 每次加载100个批次的数据
-
-# 设置配置
+# 模型参数
 class ModuleConfig:
     block_size: int = block_size
     vocab_size: int = 50257
@@ -237,6 +38,32 @@ class ModuleConfig:
     n_embd: int = 1080
 
 config = ModuleConfig()
+
+
+tprint("使用流式加载方式处理数据集，只下载和处理4-5评分范围的高质量内容...")
+dataset = load_dataset("opencsg/Fineweb-Edu-Chinese-V2.1", data_dir = "4_5", split="train", streaming=True)
+dataset_batch = dataset.batch(batch_size=batch_size)
+
+def next_x_y(dataset_batch, device, enc):
+    item = next(dataset_batch)
+    text = item["text"]
+    tokens = enc.encode(text)
+    if len(tokens) < block_size + 1:
+        tokens = tokens + [enc.eot_token] * (block_size + 1 - len(tokens))
+    else:
+        tokens = tokens[:block_size + 1]
+
+    x = torch.tensor(tokens[:-1], dtype=torch.long, device=device)
+    y = torch.tensor(tokens[1:], dtype=torch.long, device=device)
+    return x, y
+
+# 创建一个验证集，方便模型评估
+val_dataset = []
+for i in range(50):
+    x, y = next_x_y(dataset_batch, None, enc)
+    val_dataset.append((x, y))
+
+val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
 
 class NewGELU(nn.Module):
@@ -427,16 +254,6 @@ model = MyModule(config)
 optimizer = optim.Adam(model.parameters(), lr=1e-4)
 model.to(device)
 
-# 创建训练数据加载器
-train_loader = ChunkedDataLoader(
-    dataset_name=dataset_name,
-    split=split,
-    batch_size=batch_size,
-    block_size=block_size,
-    enc=enc,
-    chunk_size=chunk_size,
-    device=device
-)
 
 # 定义文本生成函数
 def generate_text(model, enc, prompt="", max_tokens=100, temperature=1.0, top_k=50, device="cpu"):
@@ -465,13 +282,13 @@ def generate_text(model, enc, prompt="", max_tokens=100, temperature=1.0, top_k=
             tokens = tokens[-(model.config.block_size - max_tokens):]
     else:
         # 对于空提示，使用一个起始token作为种子
-        tokens = [50256]  # GPT-2的<|endoftext|> token，可作为起始点
+        tokens = [enc.eot_token]  # GPT-2的<|endoftext|> token，可作为起始点
     
     tokens = torch.tensor(tokens, dtype=torch.long, device=device).unsqueeze(0)  # [1, seq_len]
     
     # 确保tokens不是空张量
     if tokens.size(1) == 0:
-        tokens = torch.tensor([[50256]], dtype=torch.long, device=device)  # 使用<|endoftext|>作为备选起始点
+        tokens = torch.tensor([[enc.eot_token]], dtype=torch.long, device=device)  # 使用<|endoftext|>作为备选起始点
     
     with torch.no_grad():
         for _ in range(max_tokens):
@@ -581,7 +398,7 @@ for epoch in range(num_epochs):
     
     for step in range(steps_per_epoch):
         # 获取下一批数据
-        x, y = train_loader.next_batch()
+        x, y = next_x_y(dataset_batch, device, enc)
         
         # 前向传播
         logits, loss = model(x, y)
@@ -618,7 +435,6 @@ for epoch in range(num_epochs):
     tprint(f"Epoch [{epoch+1}/{num_epochs}], 用时: {(t1-t0):.2f}秒")
     tprint(f"训练损失: {avg_train_loss:.4f}, 训练困惑度: {train_ppl:.4f}")
     tprint(f"验证损失: {metrics['loss']:.4f}, 验证困惑度: {metrics['perplexity']:.4f}")
-    tprint(f"数据集进度: 已处理 {train_loader.samples_processed}/{train_loader.estimated_dataset_size or '未知'} 个文档, 完整遍历次数: {train_loader.epoch_count}")
     
     # 检查是否需要保存检查点
     current_time = time.time()
@@ -633,11 +449,6 @@ for epoch in range(num_epochs):
             'train_loss': avg_train_loss,
             'val_loss': metrics['loss'],
             'config': config,
-            'data_processed': {
-                'samples_processed': train_loader.samples_processed,
-                'samples_generated': train_loader.samples_generated,
-                'epoch_count': train_loader.epoch_count
-            }
         }, checkpoint_path)
         tprint(f"检查点已保存到 {checkpoint_path}，距上次保存: {time_since_last_save:.2f}秒")
         last_save_time = current_time
