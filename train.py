@@ -32,7 +32,7 @@ block_size = 512
 # 训练循环
 num_epochs = 10000
 steps_per_epoch = 1000  # 每个epoch训练多少批次
-gradient_accumulation_steps = 20  # 梯度累积步数
+gradient_accumulation_steps = 4  # 梯度累积步数
 
 # 模型参数
 class ModuleConfig:
@@ -420,15 +420,13 @@ for epoch in range(num_epochs):
         total_train_loss += loss.item() * y.numel()
         total_train_tokens += y.numel()
         
-        flag = False
         # 梯度累积：每 gradient_accumulation_steps 步进行一次更新
         if (step + 1) % gradient_accumulation_steps == 0 or (step + 1 == steps_per_epoch):
             flag = True
             optimizer.step()
             optimizer.zero_grad()
             
-        if flag:
-            tprint(f"Epoch {epoch+1}, Step {step+1}/{steps_per_epoch}, Loss: {loss.item():.4f}, 有效批次大小: {batch_size*gradient_accumulation_steps}")
+        # tprint(f"Epoch {epoch+1}, Step {step+1}/{steps_per_epoch}, Loss: {loss.item():.4f}, 有效批次大小: {batch_size*gradient_accumulation_steps}")
     
     # 计算平均训练损失和困惑度
     avg_train_loss = total_train_loss / total_train_tokens
