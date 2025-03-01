@@ -29,6 +29,11 @@ enc = tiktoken.get_encoding("gpt2")
 batch_size = 1
 block_size = 512
 
+# 训练循环
+num_epochs = 10000
+steps_per_epoch = 1000  # 每个epoch训练多少批次
+gradient_accumulation_steps = 20  # 梯度累积步数
+
 # 模型参数
 class ModuleConfig:
     block_size: int = block_size
@@ -36,6 +41,9 @@ class ModuleConfig:
     n_layer: int = 36
     n_head: int = 20
     n_embd: int = 1080
+
+# using a global to toggle flash-attention
+FLASH = False
 
 config = ModuleConfig()
 
@@ -79,9 +87,6 @@ class NewGELU(nn.Module):
     """Careful there are a few versions of GeLU, this one is the exact one used by OpenAI"""
     def forward(self, input):
         return 0.5 * input * (1.0 + torch.tanh(math.sqrt(2.0 / math.pi) * (input + 0.044715 * torch.pow(input, 3.0))))
-
-# using a global to toggle flash-attention
-FLASH = 0
 
 class CausalSelfAttention(nn.Module):
 
@@ -384,11 +389,6 @@ def generate_examples(model, enc, device, block_size, epoch=None):
             tprint(f"生成文本时发生错误: {str(e)}")
         tprint("-"*50)
 
-# 训练循环
-num_epochs = 10000
-steps_per_epoch = 100  # 每个epoch训练多少批次
-gradient_accumulation_steps = 4  # 梯度累积步数，相当于batch_size*4的效果
-
 # 记录上次保存模型的时间
 last_save_time = time.time()
 checkpoint_dir = "checkpoints"
@@ -420,17 +420,15 @@ for epoch in range(num_epochs):
         total_train_loss += loss.item() * y.numel()
         total_train_tokens += y.numel()
         
+        flag = False
         # 梯度累积：每 gradient_accumulation_steps 步进行一次更新
         if (step + 1) % gradient_accumulation_steps == 0 or (step + 1 == steps_per_epoch):
+            flag = True
             optimizer.step()
             optimizer.zero_grad()
             
-            # 每10个累积步骤打印一次，这样仍然保持与原来相似的日志频率
-            if step % (10 * gradient_accumulation_steps) < gradient_accumulation_steps:
-                tprint(f"Epoch {epoch+1}, Step {step+1}/{steps_per_epoch}, Loss: {loss.item():.4f}, 有效批次大小: {batch_size*gradient_accumulation_steps}")
-        elif step % 10 == 0:
-            # 在非更新步骤，也保持一定频率的日志打印
-            tprint(f"Epoch {epoch+1}, Step {step+1}/{steps_per_epoch}, Loss: {loss.item():.4f} (累积中)")
+        if flag:
+            tprint(f"Epoch {epoch+1}, Step {step+1}/{steps_per_epoch}, Loss: {loss.item():.4f}, 有效批次大小: {batch_size*gradient_accumulation_steps}")
     
     # 计算平均训练损失和困惑度
     avg_train_loss = total_train_loss / total_train_tokens
