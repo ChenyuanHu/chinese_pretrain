@@ -24,15 +24,6 @@ if torch.cuda.is_available():
 
 # 使用tiktoken编码器
 enc = tiktoken.get_encoding("gpt2")
-# 配置特殊token的处理
-allowed_special = {"<|endoftext|>"}  # 允许的特殊token
-disallowed_special = ()  # 禁用所有特殊token的检查
-
-def encode_with_special(text):
-    return enc.encode(text, allowed_special=allowed_special, disallowed_special=disallowed_special)
-
-def decode_with_special(tokens):
-    return enc.decode(tokens)
 
 # 数据集参数
 batch_size = 1
@@ -57,33 +48,47 @@ FLASH = False
 
 config = ModuleConfig()
 
+# 配置特殊token的处理
+allowed_special = {"<|endoftext|>"}  # 允许的特殊token
+disallowed_special = ()  # 禁用所有特殊token的检查
 
 tprint("使用流式加载方式处理数据集，只下载和处理4-5评分范围的高质量内容...")
 dataset = load_dataset("opencsg/Fineweb-Edu-Chinese-V2.1", data_dir = "4_5", split="train", streaming=True)
 dataset_batch = iter(dataset.batch(batch_size=batch_size))
 
 def next_x_y(device):
-    item = next(dataset_batch)
-    texts = item["text"]
+    while True:
+        try:
+            item = next(dataset_batch)
+            texts = item["text"]
 
-    xs = []
-    ys = []
-    for text in texts:
-        tokens = encode_with_special(text)
-        if len(tokens) < block_size + 1:
-            tokens = tokens + [enc.eot_token] * (block_size + 1 - len(tokens))
-        else:
-            tokens = tokens[:block_size + 1]
-        
-        x = tokens[:-1]
-        y = tokens[1:]
-        xs.append(x)
-        ys.append(y)
+            xs = []
+            ys = []
+            for text in texts:
+                tokens = enc.encode(text, allowed_special=allowed_special, disallowed_special=disallowed_special)
+                if len(tokens) < block_size + 1:
+                    tokens = tokens + [enc.eot_token] * (block_size + 1 - len(tokens))
+                else:
+                    tokens = tokens[:block_size + 1]
+                
+                x = tokens[:-1]
+                y = tokens[1:]
+                xs.append(x)
+                ys.append(y)
 
-    xs = torch.tensor(xs, dtype=torch.long, device=device)
-    ys = torch.tensor(ys, dtype=torch.long, device=device)
+            xs = torch.tensor(xs, dtype=torch.long, device=device)
+            ys = torch.tensor(ys, dtype=torch.long, device=device)
 
-    return xs, ys
+            return xs, ys
+            
+        except StopIteration:
+            # 如果数据集遍历完了，重新开始
+            tprint("数据集遍历完毕，退出程序")
+            exit()
+        except Exception as e:
+            tprint(f"处理批次时出错: {str(e)}，跳过此批次")
+            time.sleep(120)
+            continue
 
 # 创建一个验证集，方便模型评估
 val_dataset = []
@@ -300,7 +305,7 @@ def generate_text(model, enc, prompt="", max_tokens=100, temperature=1.0, top_k=
     
     # 编码输入提示
     if prompt:
-        tokens = encode_with_special(prompt)
+        tokens = enc.encode(prompt)
         if len(tokens) > model.config.block_size - max_tokens:
             # 如果提示太长，只保留后面部分
             tokens = tokens[-(model.config.block_size - max_tokens):]
@@ -350,13 +355,13 @@ def generate_text(model, enc, prompt="", max_tokens=100, temperature=1.0, top_k=
     
     # 如果有提示，去掉提示部分
     if prompt:
-        prompt_length = len(encode_with_special(prompt))
+        prompt_length = len(enc.encode(prompt))
         generated_tokens = generated_tokens[prompt_length:]
     else:
         # 对于空提示，去掉我们添加的起始token
         generated_tokens = generated_tokens[1:]
     
-    generated_text = decode_with_special(generated_tokens)
+    generated_text = enc.decode(generated_tokens)
     return generated_text
 
 # 在训练循环中生成文本的辅助函数
