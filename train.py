@@ -199,7 +199,7 @@ chunk_size = batch_size * 100  # 每次加载100个批次的数据
 
 # 设置配置
 class ModuleConfig:
-    block_size: int = 512
+    block_size: int = block_size
     vocab_size: int = 50257
     n_layer: int = 4
     n_head: int = 4
