@@ -472,6 +472,15 @@ for epoch in range(num_epochs):
         tprint(f"检查点已保存到 {checkpoint_path}，距上次保存: {time_since_last_save:.2f}秒")
         last_save_time = current_time
 
+# 保存模型
+model_save_path = "chinese_lm_model.pt"
+torch.save({
+    'model_state_dict': model.state_dict(),
+    'optimizer_state_dict': optimizer.state_dict(),
+    'config': config,
+}, model_save_path)
+tprint(f"模型已保存到 {model_save_path}")
+
 # 定义文本生成函数
 def generate_text(model, enc, prompt="", max_tokens=100, temperature=1.0, top_k=50, device="cpu"):
     """
