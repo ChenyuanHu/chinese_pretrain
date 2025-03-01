@@ -584,12 +584,3 @@ for prompt in prompts:
     )
     tprint(f"生成: {generated}")
     tprint("-"*50)
-
-# 保存模型
-model_save_path = "chinese_lm_model.pt"
-torch.save({
-    'model_state_dict': model.state_dict(),
-    'optimizer_state_dict': optimizer.state_dict(),
-    'config': config,
-}, model_save_path)
-tprint(f"模型已保存到 {model_save_path}")
