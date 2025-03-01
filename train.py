@@ -577,7 +577,7 @@ for prompt in prompts:
         model=model,
         enc=enc,
         prompt=prompt,
-        max_tokens=150,
+        max_tokens=block_size,
         temperature=0.8,
         top_k=40,
         device=device
