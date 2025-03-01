@@ -12,6 +12,8 @@ import numpy as np
 from itertools import islice
 import glob
 import os
+# 导入日志模块
+from log import tprint
 
 # 设置随机种子以确保可重复性
 torch.manual_seed(42)
@@ -30,7 +32,7 @@ class StreamingChineseDataset(IterableDataset):
         self.max_samples = max_samples
         self.vocab_size = 50257 if enc else None
         # 加载流式数据集，直接选择4-5评分范围的高质量内容
-        print(f"加载数据集 {dataset_name}，评分范围: 4-5")
+        tprint(f"加载数据集 {dataset_name}，评分范围: 4-5")
         self.ds = load_dataset(dataset_name, data_dir = "4_5", split=split, streaming=True)
     
     def __iter__(self):
@@ -81,7 +83,7 @@ class ChunkedDataLoader:
         self.device = device
         
         # 使用流式数据集，直接加载4-5评分范围的高质量内容
-        print(f"加载数据集 {dataset_name}，评分范围: 4-5")
+        tprint(f"加载数据集 {dataset_name}，评分范围: 4-5")
         self.ds = load_dataset(dataset_name, data_dir = "4_5", split=split, streaming=True)
         
         # 当前加载的数据块
@@ -121,7 +123,7 @@ class ChunkedDataLoader:
             # 如果数据集已经被消耗完，则重新启动流
             self.ds = load_dataset(self.dataset_name, data_dir = "4_5", split=self.split, streaming=True)
             
-        print(f"加载了 {len(self.current_buffer)} 个样本到缓冲区")
+        tprint(f"加载了 {len(self.current_buffer)} 个样本到缓冲区")
         
         # 如果缓冲区为空，说明数据集可能为空
         if not self.current_buffer:
@@ -166,7 +168,7 @@ class ChunkedDataLoader:
 # 使用tiktoken编码器
 enc = tiktoken.get_encoding("gpt2")
 
-print("使用流式加载方式处理数据集，只下载和处理4-5评分范围的高质量内容...")
+tprint("使用流式加载方式处理数据集，只下载和处理4-5评分范围的高质量内容...")
 
 # 配置参数
 dataset_name = "opencsg/Fineweb-Edu-Chinese-V2.1"
@@ -387,7 +389,7 @@ if torch.cuda.is_available():
     device = "cuda"
 elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
     device = "mps"
-print(f"使用设备: {device}")
+tprint(f"使用设备: {device}")
 
 # 初始化模型
 model = MyModule(config)
@@ -408,6 +410,14 @@ train_loader = ChunkedDataLoader(
 # 训练循环
 num_epochs = 10
 steps_per_epoch = 100  # 每个epoch训练多少批次
+
+# 记录上次保存模型的时间
+last_save_time = time.time()
+checkpoint_dir = "checkpoints"
+# 创建检查点目录（如果不存在）
+if not os.path.exists(checkpoint_dir):
+    os.makedirs(checkpoint_dir)
+    tprint(f"创建检查点目录: {checkpoint_dir}")
 
 for epoch in range(num_epochs):
     model.train()
@@ -430,7 +440,7 @@ for epoch in range(num_epochs):
         total_train_tokens += y.numel()
         
         if step % 10 == 0:
-            print(f"Epoch {epoch+1}, Step {step+1}/{steps_per_epoch}, Loss: {loss.item():.4f}")
+            tprint(f"Epoch {epoch+1}, Step {step+1}/{steps_per_epoch}, Loss: {loss.item():.4f}")
     
     # 计算平均训练损失和困惑度
     avg_train_loss = total_train_loss / total_train_tokens
@@ -441,9 +451,26 @@ for epoch in range(num_epochs):
     # 在验证集上评估
     metrics = evaluate_model(model, val_loader, device)
     
-    print(f"Epoch [{epoch+1}/{num_epochs}], 用时: {(t1-t0):.2f}秒")
-    print(f"训练损失: {avg_train_loss:.4f}, 训练困惑度: {train_ppl:.4f}")
-    print(f"验证损失: {metrics['loss']:.4f}, 验证困惑度: {metrics['perplexity']:.4f}")
+    tprint(f"Epoch [{epoch+1}/{num_epochs}], 用时: {(t1-t0):.2f}秒")
+    tprint(f"训练损失: {avg_train_loss:.4f}, 训练困惑度: {train_ppl:.4f}")
+    tprint(f"验证损失: {metrics['loss']:.4f}, 验证困惑度: {metrics['perplexity']:.4f}")
+    
+    # 检查是否需要保存检查点
+    current_time = time.time()
+    time_since_last_save = current_time - last_save_time
+    
+    if time_since_last_save > 600:  # 如果超过10分钟（600秒）
+        checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch+1}.pt")
+        torch.save({
+            'epoch': epoch + 1,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'train_loss': avg_train_loss,
+            'val_loss': metrics['loss'],
+            'config': config,
+        }, checkpoint_path)
+        tprint(f"检查点已保存到 {checkpoint_path}，距上次保存: {time_since_last_save:.2f}秒")
+        last_save_time = current_time
 
 # 定义文本生成函数
 def generate_text(model, enc, prompt="", max_tokens=100, temperature=1.0, top_k=50, device="cpu"):
@@ -522,9 +549,9 @@ def generate_text(model, enc, prompt="", max_tokens=100, temperature=1.0, top_k=
     return generated_text
 
 # 在训练循环结束后生成示例文本
-print("\n" + "="*50)
-print("训练完成！生成示例文本：")
-print("="*50)
+tprint("\n" + "="*50)
+tprint("训练完成！生成示例文本：")
+tprint("="*50)
 
 # 生成不同提示的文本
 prompts = [
@@ -536,7 +563,7 @@ prompts = [
 ]
 
 for prompt in prompts:
-    print(f"\n提示: {prompt if prompt else '(无提示)'}")
+    tprint(f"\n提示: {prompt if prompt else '(无提示)'}")
     generated = generate_text(
         model=model,
         enc=enc,
@@ -546,8 +573,8 @@ for prompt in prompts:
         top_k=40,
         device=device
     )
-    print(f"生成: {generated}")
-    print("-"*50)
+    tprint(f"生成: {generated}")
+    tprint("-"*50)
 
 # 保存模型
 model_save_path = "chinese_lm_model.pt"
@@ -556,4 +583,4 @@ torch.save({
     'optimizer_state_dict': optimizer.state_dict(),
     'config': config,
 }, model_save_path)
-print(f"模型已保存到 {model_save_path}")
+tprint(f"模型已保存到 {model_save_path}")
