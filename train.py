@@ -12,6 +12,7 @@ import numpy as np
 from itertools import islice
 import glob
 import os
+from torch.cuda.amp import autocast, GradScaler  # 添加混合精度训练所需的导入
 # 导入日志模块
 from log import tprint
 
@@ -285,6 +286,10 @@ model = MyModule(config)
 optimizer = optim.Adam(model.parameters(), lr=1e-4)
 model.to(device)
 
+# 初始化梯度缩放器，用于混合精度训练
+scaler = GradScaler()
+tprint("已启用混合精度训练(AMP)")
+
 # 计算并打印模型参数量
 total_params = sum(p.numel() for p in model.parameters())
 trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -472,12 +477,15 @@ for epoch in range(start_epoch, num_epochs):
         # 获取下一批数据
         x, y = next_x_y(device)
         
-        # 前向传播
-        logits, loss = model(x, y)
+        # 使用autocast进行混合精度训练
+        with autocast(device_type=device):
+            # 前向传播
+            logits, loss = model(x, y)
+            # 缩放损失以适应梯度累积
+            scaled_loss = loss / gradient_accumulation_steps
         
-        # 缩放损失以适应梯度累积
-        scaled_loss = loss / gradient_accumulation_steps
-        scaled_loss.backward()
+        # 使用scaler进行反向传播
+        scaler.scale(scaled_loss).backward()
         
         # 累计损失和token数
         total_train_loss += loss.item() * y.numel()
@@ -485,8 +493,10 @@ for epoch in range(start_epoch, num_epochs):
         
         # 梯度累积：每 gradient_accumulation_steps 步进行一次更新
         if (step + 1) % gradient_accumulation_steps == 0 or (step + 1 == steps_per_epoch):
-            flag = True
-            optimizer.step()
+            # 使用scaler更新参数
+            scaler.unscale_(optimizer)
+            scaler.step(optimizer)
+            scaler.update()
             optimizer.zero_grad()
             
         # tprint(f"Epoch {epoch+1}, Step {step+1}/{steps_per_epoch}, Loss: {loss.item():.4f}, 有效批次大小: {batch_size*gradient_accumulation_steps}")
