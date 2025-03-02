@@ -55,6 +55,8 @@ disallowed_special = ()  # 禁用所有特殊token的检查
 
 tprint(f"使用流式加载方式处理数据集，只下载和处理4-5评分范围的高质量内容...")
 dataset = load_dataset("opencsg/Fineweb-Edu-Chinese-V2.1", data_dir = "4_5", split="train", streaming=True)
+# dataset = load_dataset("opencsg/Fineweb-Edu-Chinese-V2.1", data_dir = "4_5", split="train[92%:94%]")
+# dataset = dataset.shuffle(seed=42)
 dataset_batch = iter(dataset.batch(batch_size=batch_size))
 
 def next_x_y(device):
@@ -378,7 +380,7 @@ def generate_examples(model, enc, device, block_size, epoch=None):
     
     # 生成不同提示的文本
     prompts = [
-        "今天天气真好，",
+        "中华人民共和国是中国共产",
         # "人工智能在教育领域的应用，",
         # "中国传统文化是指",
         # "学习编程的最佳方法是",
@@ -401,7 +403,7 @@ def generate_examples(model, enc, device, block_size, epoch=None):
                 model=model,
                 enc=enc,
                 prompt=prompt,
-                max_tokens=min(100, block_size),  # 减少生成的token数，加快生成速度
+                max_tokens=min(300, block_size),  # 减少生成的token数，加快生成速度
                 temperature=0.1,
                 top_k=40,
                 device=device
