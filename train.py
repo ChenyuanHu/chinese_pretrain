@@ -283,6 +283,12 @@ model = MyModule(config)
 optimizer = optim.Adam(model.parameters(), lr=1e-4)
 model.to(device)
 
+# 计算并打印模型参数量
+total_params = sum(p.numel() for p in model.parameters())
+trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+tprint(f"模型总参数量: {total_params:,}")
+tprint(f"可训练参数量: {trainable_params:,}")
+tprint(f"模型大小: {total_params * 4 / (1024**2):.2f} MB")  # 假设每个参数是4字节（float32）
 
 # 定义文本生成函数
 def generate_text(model, enc, prompt="", max_tokens=100, temperature=1.0, top_k=50, device="cpu"):
