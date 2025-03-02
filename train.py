@@ -52,8 +52,8 @@ config = ModuleConfig()
 allowed_special = {"<|endoftext|>"}  # 允许的特殊token
 disallowed_special = ()  # 禁用所有特殊token的检查
 
-STREAMING = False  # 流式加载可以边训练边下载，避免一次性下载70G的数据集，但流式下载之后就Shuffle不了了
-SHUFFLE = True and not STREAMING
+STREAMING = True  # 流式加载可以边训练边下载，避免一次性下载70G的数据集，但流式下载之后就Shuffle不了了
+SHUFFLE = False and not STREAMING
 tprint(f"使用{'流式' if STREAMING else '批量'}加载方式处理数据集，只下载和处理4-5评分范围的高质量内容...")
 dataset = load_dataset("opencsg/Fineweb-Edu-Chinese-V2.1", data_dir = "4_5", split="train", streaming=STREAMING, shuffle=SHUFFLE)
 dataset_batch = iter(dataset.batch(batch_size=batch_size))
