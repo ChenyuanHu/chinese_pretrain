@@ -322,7 +322,7 @@ def generate_text(model, enc, prompt="", max_tokens=100, temperature=1.0, top_k=
     with torch.no_grad():
         for _ in range(max_tokens):
             # 获取预测
-            if len(tokens[0]) > model.config.block_size:
+            if tokens.size(1) > model.config.block_size:  # 使用size(1)直接获取序列长度
                 # 如果序列太长，只保留后面的部分
                 tokens = tokens[:, -model.config.block_size:]
             
