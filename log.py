@@ -1,12 +1,14 @@
 import os
 from datetime import datetime
 
+rank = int(os.environ.get('RANK', 'single'))
+
 def get_log_file():
     """获取日志文件路径"""
     log_dir = 'logs'
     os.makedirs(log_dir, exist_ok=True)
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    return os.path.join(log_dir, f'train_{timestamp}.log')
+    return os.path.join(log_dir, f'train_{timestamp}_{rank}.log')
 
 # 创建日志文件
 LOG_FILE = get_log_file()
