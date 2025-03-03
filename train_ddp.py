@@ -539,7 +539,7 @@ for epoch in range(start_epoch, num_epochs):
             optimizer.zero_grad()
             
         current_time = time.time()
-        if master_process and current_time - last_print_time >= 15:  # 每15秒打印一次
+        if master_process and current_time - last_print_time >= 30:  # 每30秒打印一次
             tprint(f"Epoch {epoch+1}, Step {step+1}/{steps_per_epoch}, Loss: {loss.item():.4f}")
             last_print_time = current_time
     
