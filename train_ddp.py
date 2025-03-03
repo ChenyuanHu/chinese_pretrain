@@ -513,6 +513,7 @@ for epoch in range(start_epoch, num_epochs):
     
     optimizer.zero_grad()  # 在epoch开始时重置梯度
     
+    last_print_time = time.time()
     for step in range(steps_per_epoch):
         # 获取下一批数据
         x, y = next_x_y(device)
@@ -537,8 +538,10 @@ for epoch in range(start_epoch, num_epochs):
             optimizer.step()
             optimizer.zero_grad()
             
-        if (step + 1) % 10 == 0:
-            print(f"Epoch {epoch+1}, Step {step+1}/{steps_per_epoch}, Loss: {loss.item():.4f}")
+        current_time = time.time()
+        if master_process and current_time - last_print_time >= 15:  # 每15秒打印一次
+            tprint(f"Epoch {epoch+1}, Step {step+1}/{steps_per_epoch}, Loss: {loss.item():.4f}")
+            last_print_time = current_time
     
     # 计算平均训练损失和困惑度
     avg_train_loss = total_train_loss / total_train_tokens
