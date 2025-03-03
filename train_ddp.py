@@ -460,7 +460,9 @@ if not os.path.exists(checkpoint_dir):
     os.makedirs(checkpoint_dir)
     tprint(f"创建检查点目录: {checkpoint_dir}")
 
+tprint(f"wait barrier")
 dist.barrier()
+tprint(f"barrier done")
 
 # 检查是否存在checkpoint文件
 def get_latest_checkpoint():
@@ -574,8 +576,10 @@ for epoch in range(start_epoch, num_epochs):
             except Exception as e:
                 tprint(f"保存checkpoint时出错: {str(e)}")
 
+    tprint(f"wait barrier")
     dist.barrier()
-    
+    tprint(f"barrier done")
+
     # 每个epoch结束后生成示例文本
     if master_process:
         generate_examples(model, enc, device, block_size, epoch)
