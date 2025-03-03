@@ -27,12 +27,12 @@ if torch.cuda.is_available():
 enc = tiktoken.get_encoding("gpt2")
 
 # 数据集参数
-batch_size = 16
+batch_size = 32
 block_size = 512
 
 # 训练循环
 num_epochs = 10000
-steps_per_epoch = 500  # 每个epoch训练多少批次
+steps_per_epoch = 100  # 每个epoch训练多少批次
 gradient_accumulation_steps = 1  # 梯度累积步数
 save_interval_sec = 1800  # 每n秒保存一次模型
 
@@ -263,6 +263,10 @@ def evaluate_model(model, val_loader, device):
             
             # 前向传播
             logits, loss = model(x, y)
+            
+            # 确保损失是标量
+            loss = loss.mean()
+            
             total_loss += loss.item() * y.numel()
             total_tokens += y.numel()
 
@@ -318,14 +322,20 @@ def generate_text(model, enc, prompt="", max_tokens=100, temperature=1.0, top_k=
     Returns:
         生成的文本
     """
+    # 获取原始模型（如果是DataParallel包装的）
+    if isinstance(model, nn.DataParallel):
+        base_model = model.module
+    else:
+        base_model = model
+        
     model.eval()
     
     # 编码输入提示
     if prompt:
         tokens = enc.encode(prompt)
-        if len(tokens) > model.config.block_size - max_tokens:
+        if len(tokens) > base_model.config.block_size - max_tokens:
             # 如果提示太长，只保留后面部分
-            tokens = tokens[-(model.config.block_size - max_tokens):]
+            tokens = tokens[-(base_model.config.block_size - max_tokens):]
     else:
         # 对于空提示，使用一个起始token作为种子
         tokens = [enc.eot_token]  # GPT-2的<|endoftext|> token，可作为起始点
@@ -339,9 +349,9 @@ def generate_text(model, enc, prompt="", max_tokens=100, temperature=1.0, top_k=
     with torch.no_grad():
         for _ in range(max_tokens):
             # 获取预测
-            if tokens.size(1) > model.config.block_size:  # 使用size(1)直接获取序列长度
+            if tokens.size(1) > base_model.config.block_size:  # 使用size(1)直接获取序列长度
                 # 如果序列太长，只保留后面的部分
-                tokens = tokens[:, -model.config.block_size:]
+                tokens = tokens[:, -base_model.config.block_size:]
             
             # 前向传播
             logits, _ = model(tokens)
