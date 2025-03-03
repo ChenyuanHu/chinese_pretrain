@@ -51,12 +51,12 @@ if torch.cuda.is_available():
 enc = tiktoken.get_encoding("gpt2")
 
 # 数据集参数
-batch_size = 8
-block_size = 512
+batch_size = 4
+block_size = 1024
 
 # 训练循环
 num_epochs = 10000
-steps_per_epoch = 100  # 每个epoch训练多少批次
+steps_per_epoch = 1000  # 每个epoch训练多少批次
 gradient_accumulation_steps = 1  # 梯度累积步数
 save_interval_sec = 1800  # 每n秒保存一次模型
 
@@ -64,7 +64,7 @@ save_interval_sec = 1800  # 每n秒保存一次模型
 class ModuleConfig:
     block_size: int = block_size
     vocab_size: int = 50257
-    n_layer: int = 48
+    n_layer: int = 46
     n_head: int = 25
     n_embd: int = 1600
 
@@ -563,17 +563,12 @@ for epoch in range(start_epoch, num_epochs):
         
     t1 = time.time()
     
-    tprint(f"Epoch [{epoch+1}/{num_epochs}], 用时: {(t1-t0):.2f}秒")
-
     # 在验证集上评估
-    if master_process:
-        tprint(f"start evaluate")
-        metrics = evaluate_model(model, val_loader, device)
-        tprint(f"evaluate done")
+    metrics = evaluate_model(model, val_loader, device)
     
-    if master_process:
-        tprint(f"训练损失: {avg_train_loss:.4f}, 训练困惑度: {train_ppl:.4f}")
-        tprint(f"验证损失: {metrics['loss']:.4f}, 验证困惑度: {metrics['perplexity']:.4f}")
+    tprint(f"Epoch [{epoch+1}/{num_epochs}], 用时: {(t1-t0):.2f}秒")
+    tprint(f"训练损失: {avg_train_loss:.4f}, 训练困惑度: {train_ppl:.4f}")
+    tprint(f"验证损失: {metrics['loss']:.4f}, 验证困惑度: {metrics['perplexity']:.4f}")
     
     # 检查是否需要保存检查点
     if master_process:
@@ -603,8 +598,7 @@ for epoch in range(start_epoch, num_epochs):
         tprint(f"barrier done")
 
     # 每个epoch结束后生成示例文本
-    if master_process:
-        generate_examples(model, enc, device, block_size, epoch)
+    generate_examples(model, enc, device, block_size, epoch)
 
 # 训练结束后生成示例文本
 if master_process:
