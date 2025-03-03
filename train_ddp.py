@@ -534,13 +534,6 @@ for epoch in range(start_epoch, num_epochs):
             
             # 梯度累积：每 gradient_accumulation_steps 步进行一次更新
             if (step + 1) % gradient_accumulation_steps == 0 or (step + 1 == steps_per_epoch):
-                # 在更新前同步梯度
-                if ddp:
-                    for param in model.parameters():
-                        if param.grad is not None:
-                            dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
-                            param.grad.data /= ddp_world_size
-                
                 optimizer.step()
                 optimizer.zero_grad()
             
