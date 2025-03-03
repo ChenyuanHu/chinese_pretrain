@@ -578,8 +578,6 @@ for epoch in range(start_epoch, num_epochs):
         if time_since_last_save > save_interval_sec:  # 如果超过n秒
             tprint(f"start save checkpoint")
             try:
-                if os.path.exists(os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}.pt")):
-                    os.remove(os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}.pt"))
                 checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch+1}.pt")
                 save_dict = {
                     'epoch': epoch + 1,
@@ -591,6 +589,9 @@ for epoch in range(start_epoch, num_epochs):
                 torch.save(save_dict, checkpoint_path)
                 tprint(f"检查点已保存到 {checkpoint_path}，距上次保存: {time_since_last_save:.2f}秒")
                 last_save_time = current_time
+                tprint(f"删除旧的checkpoint")
+                if os.path.exists(os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}.pt")):
+                    os.remove(os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}.pt"))
             except Exception as e:
                 tprint(f"保存checkpoint时出错: {str(e)}")
 
