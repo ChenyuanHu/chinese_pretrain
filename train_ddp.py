@@ -120,13 +120,12 @@ def next_x_y(device):
             continue
 
 # 创建一个验证集，方便模型评估
-if master_process:
-    val_dataset = []
-    for i in range(50):
-        x, y = next_x_y(None)
-        val_dataset.append((x[0], y[0]))
+val_dataset = []
+for i in range(50):
+    x, y = next_x_y(None)
+    val_dataset.append((x[0], y[0]))
 
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
 
 class NewGELU(nn.Module):
@@ -515,33 +514,48 @@ for epoch in range(start_epoch, num_epochs):
     
     last_print_time = time.time()
     for step in range(steps_per_epoch):
-        # 获取下一批数据
-        x, y = next_x_y(device)
-        
-        # 前向传播
-        logits, loss = model(x, y)
-        
-        # 确保损失是标量
-        loss = loss.mean()  # 添加这行来确保损失是标量
-        
-        # 缩放损失以适应梯度累积
-        scaled_loss = loss / gradient_accumulation_steps
-        scaled_loss.backward()
-        
-        # 累计损失和token数
-        total_train_loss += loss.item() * y.numel()
-        total_train_tokens += y.numel()
-        
-        # 梯度累积：每 gradient_accumulation_steps 步进行一次更新
-        if (step + 1) % gradient_accumulation_steps == 0 or (step + 1 == steps_per_epoch):
-            flag = True
-            optimizer.step()
-            optimizer.zero_grad()
+        try:
+            # 获取下一批数据
+            x, y = next_x_y(device)
             
-        current_time = time.time()
-        if master_process and current_time - last_print_time >= 30:  # 每30秒打印一次
-            tprint(f"Epoch {epoch+1}, Step {step+1}/{steps_per_epoch}, Loss: {loss.item():.4f}")
-            last_print_time = current_time
+            # 前向传播
+            logits, loss = model(x, y)
+            
+            # 确保损失是标量
+            loss = loss.mean()  # 添加这行来确保损失是标量
+            
+            # 缩放损失以适应梯度累积
+            scaled_loss = loss / gradient_accumulation_steps
+            scaled_loss.backward()
+            
+            # 累计损失和token数
+            total_train_loss += loss.item() * y.numel()
+            total_train_tokens += y.numel()
+            
+            # 梯度累积：每 gradient_accumulation_steps 步进行一次更新
+            if (step + 1) % gradient_accumulation_steps == 0 or (step + 1 == steps_per_epoch):
+                # 在更新前同步梯度
+                if ddp:
+                    for param in model.parameters():
+                        if param.grad is not None:
+                            dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
+                            param.grad.data /= ddp_world_size
+                
+                optimizer.step()
+                optimizer.zero_grad()
+            
+            current_time = time.time()
+            if master_process and current_time - last_print_time >= 30:  # 每30秒打印一次
+                tprint(f"Epoch {epoch+1}, Step {step+1}/{steps_per_epoch}, Loss: {loss.item():.4f}")
+                last_print_time = current_time
+                
+        except Exception as e:
+            tprint(f"进程 {ddp_rank} 在训练步骤中遇到错误: {str(e)}")
+            raise e
+    
+    # 在epoch结束时同步所有进程
+    if ddp:
+        dist.barrier()
     
     # 计算平均训练损失和困惑度
     avg_train_loss = total_train_loss / total_train_tokens
@@ -583,9 +597,10 @@ for epoch in range(start_epoch, num_epochs):
             except Exception as e:
                 tprint(f"保存checkpoint时出错: {str(e)}")
 
-    tprint(f"wait barrier")
-    dist.barrier()
-    tprint(f"barrier done")
+    if ddp:
+        tprint(f"wait barrier")
+        dist.barrier()
+        tprint(f"barrier done")
 
     # 每个epoch结束后生成示例文本
     if master_process:
