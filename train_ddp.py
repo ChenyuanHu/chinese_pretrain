@@ -573,6 +573,8 @@ for epoch in range(start_epoch, num_epochs):
                 last_save_time = current_time
             except Exception as e:
                 tprint(f"保存checkpoint时出错: {str(e)}")
+
+    dist.barrier()
     
     # 每个epoch结束后生成示例文本
     if master_process:
