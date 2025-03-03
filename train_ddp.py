@@ -560,11 +560,11 @@ for epoch in range(start_epoch, num_epochs):
     
     # 检查是否需要保存检查点
     if master_process:
-        tprint(f"start save checkpoint")
         current_time = time.time()
         time_since_last_save = current_time - last_save_time
         
         if time_since_last_save > save_interval_sec:  # 如果超过n秒
+            tprint(f"start save checkpoint")
             try:
                 checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch+1}.pt")
                 save_dict = {
