@@ -578,6 +578,8 @@ for epoch in range(start_epoch, num_epochs):
         if time_since_last_save > save_interval_sec:  # 如果超过n秒
             tprint(f"start save checkpoint")
             try:
+                if os.path.exists(os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}.pt")):
+                    os.remove(os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}.pt"))
                 checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch+1}.pt")
                 save_dict = {
                     'epoch': epoch + 1,
