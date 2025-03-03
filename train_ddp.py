@@ -51,7 +51,7 @@ if torch.cuda.is_available():
 enc = tiktoken.get_encoding("gpt2")
 
 # 数据集参数
-batch_size = 32
+batch_size = 8
 block_size = 512
 
 # 训练循环
@@ -546,17 +546,21 @@ for epoch in range(start_epoch, num_epochs):
         
     t1 = time.time()
     
+    tprint(f"Epoch [{epoch+1}/{num_epochs}], 用时: {(t1-t0):.2f}秒")
+
     # 在验证集上评估
     if master_process:
+        tprint(f"start evaluate")
         metrics = evaluate_model(model, val_loader, device)
+        tprint(f"evaluate done")
     
-    tprint(f"Epoch [{epoch+1}/{num_epochs}], 用时: {(t1-t0):.2f}秒")
     if master_process:
         tprint(f"训练损失: {avg_train_loss:.4f}, 训练困惑度: {train_ppl:.4f}")
         tprint(f"验证损失: {metrics['loss']:.4f}, 验证困惑度: {metrics['perplexity']:.4f}")
     
     # 检查是否需要保存检查点
     if master_process:
+        tprint(f"start save checkpoint")
         current_time = time.time()
         time_since_last_save = current_time - last_save_time
         
