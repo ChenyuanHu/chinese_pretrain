@@ -501,6 +501,7 @@ class CheckpointManager:
                     os.remove(os.path.join(self.checkpoint_dir, f"checkpoint_epoch_{epoch}.pt"))
             except Exception as e:
                 tprint(f"保存checkpoint时出错: {str(e)}")
+                exit()
 
 
 class Trainer:
