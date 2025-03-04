@@ -488,7 +488,7 @@ class CheckpointManager:
                 checkpoint_path = os.path.join(self.checkpoint_dir, f"checkpoint_epoch_{epoch+1}.pt")
                 save_dict = {
                     'epoch': epoch + 1,
-                    'model_state_dict': self._get_state_dict_to_save(model),
+                    'model_state_dict': self._get_model_state_dict_to_save(model),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'train_loss': avg_train_loss,
                     'val_loss': metrics['loss'],
