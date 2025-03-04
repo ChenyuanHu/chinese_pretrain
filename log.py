@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 
-rank = int(os.environ.get('RANK', 'single'))
+rank = int(os.environ.get('RANK', -1))
 
 def get_log_file():
     """获取日志文件路径"""
@@ -16,7 +16,7 @@ LOG_FILE = get_log_file()
 def tprint(*args, **kwargs):
     """带时间戳的打印函数，同时输出到文件和标准输出"""
     time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    if rank != 'single':
+    if rank != -1:
         log_str = f'[RANK:{rank}][{time_str}] ' + ' '.join(map(str, args))
     else:
         log_str = f'[{time_str}] ' + ' '.join(map(str, args))
