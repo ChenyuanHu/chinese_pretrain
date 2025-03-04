@@ -217,7 +217,7 @@ class Tokenizer:
 
 class FineWebEduChineseDataLoader:
     def __init__(self, ddp_env, batch_size, block_size, tokenizer, use_data_percent=100):
-        percent_per_process = use_data_percent / ddp_env.ddp_world_size
+        percent_per_process = int(use_data_percent / ddp_env.ddp_world_size)
         offset_start = ddp_env.ddp_rank * percent_per_process
         offset_end = offset_start + percent_per_process
         assert offset_end <= 100, f"offset_end({offset_end}) must be less than 100"
@@ -455,7 +455,7 @@ class CheckpointManager:
 
         return start_epoch
 
-    def check_save_checkpoint(self, model, optimizer, epoch):
+    def check_save_checkpoint(self, model, optimizer, epoch, avg_train_loss, metrics):
         current_time = time.time()
         time_since_last_save = current_time - self.last_save_time
         
@@ -564,7 +564,7 @@ class Trainer:
             
             # 检查是否需要保存检查点
             if self.ddp_env.master_process:
-                self.checkpoint_manager.check_save_checkpoint(self.model, self.optimizer, epoch)
+                self.checkpoint_manager.check_save_checkpoint(self.model, self.optimizer, epoch, avg_train_loss, metrics)
 
             self.ddp_env.barrier()
 
