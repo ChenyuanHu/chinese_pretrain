@@ -428,24 +428,22 @@ class CheckpointManager:
         return latest_checkpoint
 
     # 兼容DP/DDP的模型dict，他们的key会多一个module.前缀
-    def _load_state_dict(self, model, path, map_location):
-        state_dict = torch.load(path, weights_only=True, map_location=map_location)
-        
+    def _load_model_state_dict(self, model, model_state_dict):
         # 检查是否存在 "module." 前缀的键名
-        has_module_prefix = any(k.startswith("module.") for k in state_dict.keys())
+        has_module_prefix = any(k.startswith("module.") for k in model_state_dict.keys())
         
         # 如果当前模型是 DataParallel/DDP 但权重没有前缀，添加前缀
         if isinstance(model, (torch.nn.DataParallel, torch.nn.parallel.DistributedDataParallel)):
             if not has_module_prefix:
-                state_dict = {"module." + k: v for k, v in state_dict.items()}
+                return {"module." + k: v for k, v in model_state_dict.items()}
         # 如果当前模型是单机但权重有前缀，去除前缀
         else:
             if has_module_prefix:
-                state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+                return {k.replace("module.", ""): v for k, v in model_state_dict.items()}
         
-        return state_dict
+        return model_state_dict
 
-    def _get_state_dict_to_save(self, model):
+    def _get_model_state_dict_to_save(self, model):
         # 如果模型被 DataParallel 或 DDP 包装，提取内部模型
         if isinstance(model, (torch.nn.DataParallel, torch.nn.parallel.DistributedDataParallel)):
             return model.module.state_dict()
@@ -466,9 +464,9 @@ class CheckpointManager:
             else:
                 map_location = None
             try:
-                state_dict = self._load_state_dict(model, latest_checkpoint, map_location)
+                state_dict = torch.load(latest_checkpoint, weights_only=True, map_location=map_location)
                 # 首先尝试使用weights_only=True加载
-                model.load_state_dict(state_dict['model_state_dict'])
+                model.load_state_dict(self._load_model_state_dict(model, state_dict['model_state_dict']))
                 optimizer.load_state_dict(state_dict['optimizer_state_dict'])
                 start_epoch = state_dict.get('epoch', 0)
                 tprint(f"成功加载checkpoint，将从epoch {start_epoch} 继续训练")
