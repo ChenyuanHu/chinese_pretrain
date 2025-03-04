@@ -517,6 +517,7 @@ class Trainer:
         self.checkpoint_manager = CheckpointManager(self.ddp_env, train_config.save_interval_sec)
         self.train_config = train_config
         self.module_config = module_config
+        self.tokenizer = tokenizer
 
         # 计算并打印模型参数量
         total_params = sum(p.numel() for p in self.model.parameters())
