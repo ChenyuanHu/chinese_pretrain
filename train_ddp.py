@@ -598,6 +598,10 @@ class Trainer:
             # 每个epoch结束后生成示例文本
             self.text_generator.generate_examples(self.model, self.module_config.block_size, self.tokenizer, self.ddp_env.device)
 
+    def cleanup(self):
+        if self.ddp_env.enabled:
+            dist.destroy_process_group()
+
 
 # 训练循环
 class TrainConfig:
@@ -626,4 +630,4 @@ if __name__ == "__main__":
     module_config = ModuleConfig()
     trainer = Trainer(train_config, module_config)
     trainer.train()
-
+    trainer.cleanup()
