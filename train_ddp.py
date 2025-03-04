@@ -224,7 +224,7 @@ class FineWebEduChineseDataLoader:
 
         tprint(f"加载方式处理数据集，只下载和处理4-5评分范围的高质量内容. 第{ddp_env.ddp_rank}个进程，从{offset_start}%到{offset_end}%")
         self.dataset = load_dataset("opencsg/Fineweb-Edu-Chinese-V2.1", data_dir = "4_5", split=f"train[{offset_start}%:{offset_end}%]")
-        dataset = dataset.shuffle(seed=42)
+        dataset = self.dataset.shuffle(seed=42)
         self.dataset_batch = iter(dataset.batch(batch_size=batch_size))
         self.block_size = block_size
         self.tokenizer = tokenizer
