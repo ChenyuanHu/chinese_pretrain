@@ -504,18 +504,19 @@ class CheckpointManager:
 
 
 class Trainer:
-    def __init__(self, train_config, model_config):
+    def __init__(self, train_config, module_config):
         self.ddp_env = DDPEnv()
-        self.ddp_env.ddp_model_init(MyModule(model_config))
+        self.ddp_env.ddp_model_init(MyModule(module_config))
         self.model = self.ddp_env.get_model()
         self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4)
         tokenizer = Tokenizer()
-        self.data_loader = FineWebEduChineseDataLoader(self.ddp_env, train_config.batch_size, model_config.block_size,
+        self.data_loader = FineWebEduChineseDataLoader(self.ddp_env, train_config.batch_size, module_config.block_size,
                                                        tokenizer, use_data_percent=train_config.use_data_percent)
         self.evaluate_runner = EvaluateRunner(self.data_loader, train_config.batch_size)
         self.text_generator = TextGenerator()
         self.checkpoint_manager = CheckpointManager(self.ddp_env, train_config.save_interval_sec)
         self.train_config = train_config
+        self.module_config = module_config
 
         # 计算并打印模型参数量
         total_params = sum(p.numel() for p in self.model.parameters())
@@ -593,7 +594,7 @@ class Trainer:
             self.ddp_env.barrier()
 
             # 每个epoch结束后生成示例文本
-            self.text_generator.generate_examples(self.model, self.model_config.block_size, self.tokenizer, self.ddp_env.device)
+            self.text_generator.generate_examples(self.model, self.module_config.block_size, self.tokenizer, self.ddp_env.device)
 
 
 # 训练循环
@@ -620,7 +621,7 @@ if __name__ == "__main__":
         torch.cuda.manual_seed_all(42)
 
     train_config = TrainConfig()
-    model_config = ModuleConfig()
-    trainer = Trainer(train_config, model_config)
+    module_config = ModuleConfig()
+    trainer = Trainer(train_config, module_config)
     trainer.train()
 
