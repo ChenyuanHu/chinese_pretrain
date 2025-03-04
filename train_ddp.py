@@ -515,6 +515,7 @@ class Trainer:
         self.evaluate_runner = EvaluateRunner(self.data_loader, train_config.batch_size)
         self.text_generator = TextGenerator()
         self.checkpoint_manager = CheckpointManager(self.ddp_env, train_config.save_interval_sec)
+        self.train_config = train_config
 
         # 计算并打印模型参数量
         total_params = sum(p.numel() for p in self.model.parameters())
