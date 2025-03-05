@@ -1,3 +1,10 @@
+"""
+与GPT2有以下几个不同
+1) RoPE: Relative Positional Encoding, TODO: RoPE比较麻烦，稍后实现
+2) GQA: Grouped Query Attention
+3) SwiGLU: Swish-Gated Linear Unit
+4) RMSNorm: Root Mean Square Layer Normalization
+"""
 import time
 import torch
 import torch.nn as nn
@@ -8,6 +15,7 @@ import tiktoken
 from datasets import load_dataset
 import glob
 import math
+import typing
 import os
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
@@ -15,35 +23,53 @@ import torch.distributed as dist
 # 导入日志模块
 from log import tprint
 
-class NewGELU(nn.Module):
-    """Careful there are a few versions of GeLU, this one is the exact one used by OpenAI"""
-    def forward(self, input):
-        return 0.5 * input * (1.0 + torch.tanh(math.sqrt(2.0 / math.pi) * (input + 0.044715 * torch.pow(input, 3.0))))
 
 class CausalSelfAttention(nn.Module):
     def __init__(self, config):
         super().__init__()
         assert config.n_embd % config.n_head == 0
-        # key, query, value projections for all heads, but in a batch
-        self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd)
-        # output projection
-        self.c_proj = nn.Linear(config.n_embd, config.n_embd)
-        self.c_proj.LLMC_RESIDUAL_SCALE_FLAG = 1
         # regularization
         self.n_head = config.n_head
         self.n_embd = config.n_embd
+        self.n_kv_head = config.n_kv_head
+        self.hd = self.n_embd // self.n_head
+        self.n_rep = self.n_head // self.n_kv_head
+
+        # key, query, value projections
+        self.c_attn = nn.Linear(config.n_embd, (config.n_head + 2 * config.n_kv_head) * self.hd, bias=False)
+        # output projection
+        self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=False)
+        self.c_proj.LLMC_RESIDUAL_SCALE_FLAG = 1
+
         # not really a 'bias', more of a mask, but following the OpenAI/HF naming though
         self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
                                      .view(1, 1, config.block_size, config.block_size))
+
+    @staticmethod
+    def repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
+        """torch.repeat_interleave(x, dim=2, repeats=n_rep)"""
+        bs, slen, n_kv_heads, head_dim = x.shape
+        if n_rep == 1:
+            return x
+        return (
+            x[:, :, :, None, :]
+            .expand(bs, slen, n_kv_heads, n_rep, head_dim)
+            .reshape(bs, slen, n_kv_heads * n_rep, head_dim)
+        )
 
     def forward(self, x):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
         qkv = self.c_attn(x)
-        q, k, v = qkv.split(self.n_embd, dim=2)
-        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+
+        q, k, v = qkv.split([self.n_head * self.hd, self.n_kv_head * self.hd, self.n_kv_head * self.hd], dim=-1)
+        q, k, v = map(lambda t: t.view(B, T, -1, self.hd), (q, k, v))  # (B, T, NH, HD)
+
+        k = self.repeat_kv(k, self.n_rep)  # GQA <-- 2. difference compared to GPT-2
+        v = self.repeat_kv(v, self.n_rep)
+
+        q, k, v = map(lambda t: t.transpose(1, 2), (q, k, v))  # (B, NH, T, HD)
+
         FLASH = False
         if FLASH:
             # flashattention
@@ -63,23 +89,31 @@ class CausalSelfAttention(nn.Module):
 class MLP(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.c_fc    = nn.Linear(config.n_embd, 4 * config.n_embd)
-        self.gelu    = NewGELU()
-        self.c_proj  = nn.Linear(4 * config.n_embd, config.n_embd)
-        self.c_proj.LLMC_RESIDUAL_SCALE_FLAG = 1
+        hidden_dim = 4 * config.n_embd
+        hidden_dim = int(2 * hidden_dim / 3)
+        # custom dim factor multiplier
+        if config.ffn_dim_multiplier is not None:
+            hidden_dim = int(config.ffn_dim_multiplier * hidden_dim)
+        hidden_dim = config.multiple_of * ((hidden_dim + config.multiple_of - 1) // config.multiple_of)
+        self.c_fc = nn.Linear(config.n_embd, hidden_dim, bias=False)
+        self.c_fc2 = nn.Linear(config.n_embd, hidden_dim, bias=False)
+        self.c_proj = nn.Linear(hidden_dim, config.n_embd, bias=False)
 
     def forward(self, x):
-        x = self.c_fc(x)
-        x = self.gelu(x)
+        # SwiGLU self.c_proj(F.silu(self.c_fc2(x)) * self.c_fc(x))  <-- 3. difference compared to GPT-2
+        x1 = self.c_fc(x)
+        x2 = self.c_fc2(x)
+        x2 = F.silu(x2)
+        x = x1 * x2
         x = self.c_proj(x)
         return x
 
 class Block(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.ln_1 = nn.LayerNorm(config.n_embd)
+        self.ln_1 = nn.RMSNorm(config.n_embd)
         self.attn = CausalSelfAttention(config)
-        self.ln_2 = nn.LayerNorm(config.n_embd)
+        self.ln_2 = nn.RMSNorm(config.n_embd)
         self.mlp = MLP(config)
 
     def forward(self, x):
@@ -96,7 +130,7 @@ class MyModule(nn.Module):
             wte = nn.Embedding(config.vocab_size, config.n_embd),
             wpe = nn.Embedding(config.block_size, config.n_embd),
             h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
-            ln_f = nn.LayerNorm(config.n_embd),
+            ln_f = nn.RMSNorm(config.n_embd),
         ))
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         self.lm_head.LLMC_SKIP_INIT = 1 # don't init this one, we will tie weights
@@ -617,8 +651,11 @@ class ModuleConfig:
     block_size: int = 1024
     vocab_size: int = 50257
     n_layer: int = 46
-    n_head: int = 25
+    n_head: int = 32
     n_embd: int = 1600
+    n_kv_head: int = 8
+    ffn_dim_multiplier: float = 1.3
+    multiple_of: int = 1024
 
 if __name__ == "__main__":
     # 设置随机种子以确保可重复性
