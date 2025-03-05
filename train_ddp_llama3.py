@@ -1,6 +1,6 @@
 """
 与GPT2有以下几个不同
-1) RoPE: Relative Positional Encoding, TODO: RoPE比较麻烦，稍后实现
+1) RoPE: Relative Positional Encoding
 2) GQA: Grouped Query Attention
 3) SwiGLU: Swish-Gated Linear Unit
 4) RMSNorm: Root Mean Square Layer Normalization
