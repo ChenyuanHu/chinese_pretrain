@@ -24,8 +24,80 @@ import torch.distributed as dist
 from log import tprint
 
 
+class RoPE:
+    def __init__(self, dim: int, end: int, theta: float = 10000.0, use_scaled: bool = False, block_size: int = 1024):
+        self.freqs_cis = self.precompute_freqs_cis(dim, end, theta, use_scaled)
+        self.block_size = block_size
+
+    def apply_rotary_emb_warp(self, xq: torch.Tensor, xk: torch.Tensor):
+        if self.freqs_cis.device != xq.device:
+            self.freqs_cis = self.freqs_cis.to(xq.device)
+        xq_out, xk_out = self.apply_rotary_emb(xq, xk, self.freqs_cis[:self.block_size])
+        return xq_out, xk_out
+
+    @staticmethod
+    def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
+        ndim = x.ndim
+        assert 0 <= 1 < ndim
+        assert freqs_cis.shape == (x.shape[1], x.shape[-1])
+        shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
+        return freqs_cis.view(*shape)
+
+    @staticmethod
+    def apply_scaling(freqs: torch.Tensor):
+        # Values obtained from grid search
+        scale_factor = 8
+        low_freq_factor = 1
+        high_freq_factor = 4
+        old_context_len = 8192  # original llama3 length
+
+        low_freq_wavelen = old_context_len / low_freq_factor
+        high_freq_wavelen = old_context_len / high_freq_factor
+        new_freqs = []
+        for freq in freqs:
+            wavelen = 2 * math.pi / freq
+            if wavelen < high_freq_wavelen:
+                new_freqs.append(freq)
+            elif wavelen > low_freq_wavelen:
+                new_freqs.append(freq / scale_factor)
+            else:
+                assert low_freq_wavelen != high_freq_wavelen
+                smooth = (old_context_len / wavelen - low_freq_factor) / (
+                    high_freq_factor - low_freq_factor
+                )
+                new_freqs.append((1 - smooth) * freq / scale_factor + smooth * freq)
+        return torch.tensor(new_freqs, dtype=freqs.dtype, device=freqs.device)
+
+    @staticmethod
+    def apply_rotary_emb(
+        xq: torch.Tensor,
+        xk: torch.Tensor,
+        freqs_cis: torch.Tensor,
+    ) -> typing.Tuple[torch.Tensor, torch.Tensor]:
+        xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
+        xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
+        freqs_cis = RoPE.reshape_for_broadcast(freqs_cis, xq_)
+        xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3)
+        xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
+        return xq_out.type_as(xq), xk_out.type_as(xk)
+
+    @staticmethod
+    def precompute_freqs_cis(
+        dim: int, end: int, theta: float = 10000.0, use_scaled: bool = False
+    ):
+        # 生成一个[0,1)的等差数列，包含dim/2个元素，如s=[0.0000, 0.2500, 0.5000, 0.7500] at dim = 4
+        # 再用 freqs = 1.0 / (theta ^ (s)), freqs = [1.0000, 0.1000, 0.0100, 0.0010] at theta = 10000.0
+        freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
+        t = torch.arange(end, dtype=torch.float32)
+        if use_scaled:
+            freqs = RoPE.apply_scaling(freqs)
+        freqs = torch.outer(t, freqs)
+        freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
+        return freqs_cis
+
+
 class CausalSelfAttention(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, rope):
         super().__init__()
         assert config.n_embd % config.n_head == 0
         # regularization
@@ -34,6 +106,8 @@ class CausalSelfAttention(nn.Module):
         self.n_kv_head = config.n_kv_head
         self.hd = self.n_embd // self.n_head
         self.n_rep = self.n_head // self.n_kv_head
+
+        self.rope = rope
 
         # key, query, value projections
         self.c_attn = nn.Linear(config.n_embd, (config.n_head + 2 * config.n_kv_head) * self.hd, bias=False)
@@ -64,6 +138,8 @@ class CausalSelfAttention(nn.Module):
 
         q, k, v = qkv.split([self.n_head * self.hd, self.n_kv_head * self.hd, self.n_kv_head * self.hd], dim=-1)
         q, k, v = map(lambda t: t.view(B, T, -1, self.hd), (q, k, v))  # (B, T, NH, HD)
+
+        q, k = self.rope.apply_rotary_emb_warp(q, k)
 
         k = self.repeat_kv(k, self.n_rep)  # GQA <-- 2. difference compared to GPT-2
         v = self.repeat_kv(v, self.n_rep)
@@ -109,10 +185,10 @@ class MLP(nn.Module):
         return x
 
 class Block(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, rope):
         super().__init__()
         self.ln_1 = nn.RMSNorm(config.n_embd)
-        self.attn = CausalSelfAttention(config)
+        self.attn = CausalSelfAttention(config, rope)
         self.ln_2 = nn.RMSNorm(config.n_embd)
         self.mlp = MLP(config)
 
@@ -126,10 +202,17 @@ class MyModule(nn.Module):
         super().__init__()
         self.config = config
 
+        self.rope = RoPE(
+            dim = config.n_embd // config.n_head,
+            end = config.block_size * 2,
+            theta = config.rope_theta,
+            use_scaled = config.use_scaled_rope,
+            block_size = config.block_size
+        )
+
         self.transformer = nn.ModuleDict(dict(
             wte = nn.Embedding(config.vocab_size, config.n_embd),
-            wpe = nn.Embedding(config.block_size, config.n_embd),
-            h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
+            h = nn.ModuleList([Block(config, self.rope) for _ in range(config.n_layer)]),
             ln_f = nn.RMSNorm(config.n_embd),
         ))
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
@@ -153,14 +236,10 @@ class MyModule(nn.Module):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(self, idx, targets=None, return_logits=True):
-        device = idx.device
         _, t = idx.size()
-        pos = torch.arange(0, t, dtype=torch.long, device=device) # shape (t)
 
         # forward the GPT model itself
-        tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
-        pos_emb = self.transformer.wpe(pos) # position embeddings of shape (t, n_embd)
-        x = tok_emb + pos_emb
+        x = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
         for block in self.transformer.h:
             x = block(x)
         x = self.transformer.ln_f(x)
@@ -654,8 +733,12 @@ class ModuleConfig:
     n_head: int = 32
     n_embd: int = 1600
     n_kv_head: int = 8
+    # MLP
     ffn_dim_multiplier: float = 1.3
     multiple_of: int = 1024
+    # RoPE
+    rope_theta: float = 500000.0
+    use_scaled_rope: bool = True
 
 if __name__ == "__main__":
     # 设置随机种子以确保可重复性
