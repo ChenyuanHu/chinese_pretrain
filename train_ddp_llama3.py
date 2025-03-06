@@ -25,22 +25,43 @@ from log import tprint
 
 
 class RoPE:
-    def __init__(self, dim: int, end: int, theta: float = 10000.0, use_scaled: bool = False, block_size: int = 1024):
-        self.freqs_cis = self.precompute_freqs_cis(dim, end, theta, use_scaled)
-        self.block_size = block_size
+    def __init__(self, dim: int, theta: float = 10000.0, use_scaled: bool = False):
+        # 不再预计算block_size相关参数
+        self.dim = dim
+        self.theta = theta
+        self.use_scaled = use_scaled
+        # 预计算频率基底（与序列长度无关）
+        self.base_freqs = 1.0 / (self.theta ** (torch.arange(0, dim, 2)[: (dim//2)].float() / dim))
+        if self.use_scaled:
+            self.base_freqs = self.apply_scaling(self.base_freqs)
 
     def apply_rotary_emb_warp(self, xq: torch.Tensor, xk: torch.Tensor):
-        if self.freqs_cis.device != xq.device:
-            self.freqs_cis = self.freqs_cis.to(xq.device)
-        xq_out, xk_out = self.apply_rotary_emb(xq, xk, self.freqs_cis[:self.block_size])
-        return xq_out, xk_out
+        """动态生成当前序列长度的位置编码"""
+        B, T, H, D = xq.shape  # 假设输入形状 [B, T, H, D]
+        device = xq.device
+        
+        # 这里可以考虑使用lru_cache缓存频率基底
+        # from functools import lru_cache
+        # class RoPE:
+        #     @lru_cache(maxsize=32)
+        #     def get_freqs_cis(self, T: int, device):
+        #         t = torch.arange(T, dtype=torch.float32, device=device)
+        #         return torch.polar(torch.ones_like(t), t[:, None] * self.base_freqs.to(device))
+
+        # 根据当前序列长度生成t
+        t = torch.arange(T, dtype=torch.float32, device=device)
+        freqs = torch.outer(t, self.base_freqs.to(device))
+        freqs_cis = torch.polar(torch.ones_like(freqs), freqs)
+        
+        return self.apply_rotary_emb(xq, xk, freqs_cis)
 
     @staticmethod
     def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
+        """删除原断言，适配动态形状"""
         ndim = x.ndim
-        assert 0 <= 1 < ndim
-        assert freqs_cis.shape == (x.shape[1], x.shape[-1])
-        shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
+        shape = [1] * ndim
+        shape[1] = freqs_cis.size(0)  # 序列维度
+        shape[-1] = freqs_cis.size(1) # 特征维度
         return freqs_cis.view(*shape)
 
     @staticmethod
@@ -80,20 +101,6 @@ class RoPE:
         xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3)
         xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
         return xq_out.type_as(xq), xk_out.type_as(xk)
-
-    @staticmethod
-    def precompute_freqs_cis(
-        dim: int, end: int, theta: float = 10000.0, use_scaled: bool = False
-    ):
-        # 生成一个[0,1)的等差数列，包含dim/2个元素，如s=[0.0000, 0.2500, 0.5000, 0.7500] at dim = 4
-        # 再用 freqs = 1.0 / (theta ^ (s)), freqs = [1.0000, 0.1000, 0.0100, 0.0010] at theta = 10000.0
-        freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
-        t = torch.arange(end, dtype=torch.float32)
-        if use_scaled:
-            freqs = RoPE.apply_scaling(freqs)
-        freqs = torch.outer(t, freqs)
-        freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
-        return freqs_cis
 
 
 class CausalSelfAttention(nn.Module):
@@ -204,10 +211,8 @@ class MyModule(nn.Module):
 
         self.rope = RoPE(
             dim = config.n_embd // config.n_head,
-            end = config.block_size * 2,
             theta = config.rope_theta,
             use_scaled = config.use_scaled_rope,
-            block_size = config.block_size
         )
 
         self.transformer = nn.ModuleDict(dict(
