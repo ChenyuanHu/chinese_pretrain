@@ -706,6 +706,13 @@ class Trainer:
             tprint(f"Epoch [{epoch+1}/{self.train_config.num_epochs}], 用时: {(t1-t0):.2f}秒")
             tprint(f"训练损失: {avg_train_loss:.4f}, 训练困惑度: {train_ppl:.4f}")
             tprint(f"验证损失: {metrics['loss']:.4f}, 验证困惑度: {metrics['perplexity']:.4f}")
+            if self.ddp_env.enabled:
+                dist.all_reduce(avg_train_loss, op=dist.ReduceOp.AVG)
+                dist.all_reduce(train_ppl, op=dist.ReduceOp.AVG)
+                dist.all_reduce(metrics['loss'], op=dist.ReduceOp.AVG)
+                dist.all_reduce(metrics['perplexity'], op=dist.ReduceOp.AVG)
+            tprint(f"所有进程平均：训练损失: {avg_train_loss:.4f}, 训练困惑度: {train_ppl:.4f}")
+            tprint(f"所有进程平均：验证损失: {metrics['loss']:.4f}, 验证困惑度: {metrics['perplexity']:.4f}")
             
             # 检查是否需要保存检查点
             if self.ddp_env.master_process:
