@@ -333,25 +333,62 @@ class Tokenizer:
         return self.enc.decode(tokens)
 
 
-class FineWebEduChineseDataLoader:
-    def __init__(self, ddp_env, batch_size, block_size, tokenizer, use_data_percent=100):
+class TrainDataLoader:
+    def __init__(self, ddp_env, batch_size, block_size, tokenizer, use_data_percent=100, is_sft=False):
+        self.fineweb_edu_chinese_v2_1_iter = None
+        self.chinese_deepseek_r1_distill_data_110k_sft_iter = None
+
+        if is_sft:
+            self.chinese_deepseek_r1_distill_data_110k_sft_iter = self.load_chinese_deepseek_r1_distill_data_110k_sft(batch_size)
+        else:
+            self.fineweb_edu_chinese_v2_1_iter = self.load_fineweb_edu_chinese_v2_1(ddp_env, batch_size, use_data_percent)
+
+        self.block_size = block_size
+        self.tokenizer = tokenizer
+        self.is_sft = is_sft
+
+    @staticmethod
+    def load_fineweb_edu_chinese_v2_1(ddp_env, batch_size, use_data_percent):
         percent_per_process = int(use_data_percent / ddp_env.ddp_world_size)
         offset_start = ddp_env.ddp_rank * percent_per_process
         offset_end = offset_start + percent_per_process
         assert offset_end <= 100, f"offset_end({offset_end}) must be less than 100"
 
-        tprint(f"加载方式处理数据集，只下载和处理4-5评分范围的高质量内容. 第{ddp_env.ddp_rank}个进程，从{offset_start}%到{offset_end}%")
-        self.dataset = load_dataset("opencsg/Fineweb-Edu-Chinese-V2.1", data_dir = "4_5", split=f"train[{offset_start}%:{offset_end}%]")
-        dataset = self.dataset.shuffle(seed=42)
-        self.dataset_batch = iter(dataset.batch(batch_size=batch_size))
-        self.block_size = block_size
-        self.tokenizer = tokenizer
+        tprint(f"加载FineWebEduChinese数据集，只下载和处理4-5评分范围的高质量内容. 第{ddp_env.ddp_rank}个进程，从{offset_start}%到{offset_end}%")
+        raw_dataset = load_dataset("opencsg/Fineweb-Edu-Chinese-V2.1", data_dir = "4_5", split=f"train[{offset_start}%:{offset_end}%]")
+        dataset_batch = DataLoader(raw_dataset, batch_size=batch_size, shuffle=True)
+        return iter(dataset_batch)
+    
+    def next_fineweb_edu_chinese_v2_1(self):
+        items = next(self.fineweb_edu_chinese_v2_1_iter)
+        texts = items["text"]
+        return texts
+
+    @staticmethod
+    def load_chinese_deepseek_r1_distill_data_110k_sft(batch_size):
+        tprint(f"加载ChineseDeepSeekR1DistillData数据集")
+        raw_dataset = load_dataset("Congliu/Chinese-DeepSeek-R1-Distill-data-110k-SFT", split="train")
+        dataset_batch = DataLoader(raw_dataset, batch_size=batch_size, shuffle=True)
+        return iter(dataset_batch)
+    
+    def next_chinese_deepseek_r1_distill_data_110k_sft(self):
+        items = next(self.chinese_deepseek_r1_distill_data_110k_sft_iter)
+        texts = []
+        for i in range(len(items["instruction"])):
+            text = "用户：" + items["instruction"][i] + "\n" + "AI：" + items["output"][i]
+            texts.append(text)
+        return texts
+
+    def next_router(self):
+        if self.is_sft:
+            return self.next_chinese_deepseek_r1_distill_data_110k_sft()
+        else:
+            return self.next_fineweb_edu_chinese_v2_1()
 
     def next(self, device):
         while True:
             try:
-                item = next(self.dataset_batch)
-                texts = item["text"]
+                texts = self.next_router()
 
                 xs = []
                 ys = []
@@ -492,7 +529,9 @@ class TextGenerator:
         
         # 生成不同提示的文本
         prompts = [
-            "中华人民共和国是中国共产",
+            "用户：中华人民共和国的现在的主席是谁？\nAI：",
+            "用户：在大学里应该谈恋爱吗？\nAI：",
+            "用户：请根据规律填充这两个空缺的数字。 4, 3, 4, 3, 4, 3, （），（）\nAI：",
             ""  # 空提示，完全由模型自由生成
         ]
         
@@ -506,7 +545,7 @@ class TextGenerator:
                     block_size=block_size,
                     tokenizer=tokenizer,
                     prompt=prompt,
-                    max_tokens=min(300, block_size),  # 减少生成的token数，加快生成速度
+                    max_tokens=block_size,
                     temperature=0.1,
                     top_k=40,
                     device=device
@@ -622,8 +661,9 @@ class Trainer:
         self.model = self.ddp_env.get_model()
         self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4)
         tokenizer = Tokenizer()
-        self.data_loader = FineWebEduChineseDataLoader(self.ddp_env, train_config.batch_size, module_config.block_size,
-                                                       tokenizer, use_data_percent=train_config.use_data_percent)
+        self.data_loader = TrainDataLoader(self.ddp_env, train_config.batch_size, module_config.block_size,
+                                                       tokenizer, use_data_percent=train_config.use_data_percent,
+                                                       is_sft=train_config.is_sft)
         self.evaluate_runner = EvaluateRunner(self.data_loader, train_config.batch_size)
         self.text_generator = TextGenerator()
         self.checkpoint_manager = CheckpointManager(self.ddp_env, train_config.save_interval_sec)
@@ -722,6 +762,7 @@ class Trainer:
 
 # 训练循环
 class TrainConfig:
+    is_sft = False
     use_data_percent = 80
     batch_size = 4
     num_epochs = 10000
