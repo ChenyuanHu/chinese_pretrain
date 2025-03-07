@@ -729,7 +729,8 @@ class Trainer:
                     
                     current_time = time.time()
                     if self.ddp_env.master_process and current_time - last_print_time >= 30:  # 每30秒打印一次
-                        tprint(f"Epoch {epoch+1}, Step {step+1}/{self.train_config.steps_per_epoch}, Loss: {loss.item():.4f}")
+                        tokens_per_sec = total_train_tokens / (current_time - t0)
+                        tprint(f"Epoch {epoch+1}, Step {step+1}/{self.train_config.steps_per_epoch}, Loss: {loss.item():.4f}, Tokens/s: {tokens_per_sec:.2f}")
                         last_print_time = current_time
                         
                 except Exception as e:
@@ -750,6 +751,9 @@ class Trainer:
             global_avg_train_loss = global_train_loss / global_train_tokens
             global_train_ppl = torch.exp(torch.tensor(global_avg_train_loss)).item()
 
+            # 计算整个训练集群的tokens/s
+            global_tokens_per_sec = global_train_tokens / (time.time() - t0)
+
             # 在验证集上评估
             global_eval_avg_loss, global_eval_ppl = self.evaluate_runner.evaluate(self.model, self.ddp_env.device, self.ddp_env)
 
@@ -757,6 +761,7 @@ class Trainer:
             tprint(f"Epoch [{epoch+1}/{self.train_config.num_epochs}], 用时: {(t1-t0):.2f}秒")
             tprint(f"全局训练损失: {global_avg_train_loss:.4f}, 困惑度: {global_train_ppl:.4f}")
             tprint(f"全局验证损失: {global_eval_avg_loss:.4f}, 验证困惑度: {global_eval_ppl:.4f}")
+            tprint(f"训练集群处理速度: {global_tokens_per_sec:.2f} tokens/s")
             
             # 检查是否需要保存检查点
             if self.ddp_env.master_process:
