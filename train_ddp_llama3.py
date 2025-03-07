@@ -336,7 +336,7 @@ class Tokenizer:
 
 
 class TrainDataLoader:
-    def __init__(self, ddp_env, batch_size, block_size, tokenizer, use_data_percent=100, is_sft=False):
+    def __init__(self, ddp_env, batch_size, block_size, tokenizer=None, use_data_percent=100, is_sft=False):
         self.fineweb_edu_chinese_v2_1_iter = None
         self.chinese_deepseek_r1_distill_data_110k_sft_iter = None
         self.block_size = block_size
@@ -346,6 +346,9 @@ class TrainDataLoader:
         self.batch_size = batch_size
         self.is_sft = is_sft
         self.reload()
+
+    def set_tokenizer(self, tokenizer):
+        self.tokenizer = tokenizer
 
     def reload(self):
         if self.is_sft:
@@ -654,14 +657,17 @@ class Trainer:
         self.model = self.ddp_env.get_model()
         tprint(f"模型初始化完成")
         self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4)
-        tokenizer = Tokenizer()
-        tprint(f"分词器初始化完成")
+
         self.data_loader = TrainDataLoader(self.ddp_env, train_config.batch_size, module_config.block_size,
-                                                       tokenizer, use_data_percent=train_config.use_data_percent,
+                                                       tokenizer=None, use_data_percent=train_config.use_data_percent,
                                                        is_sft=train_config.is_sft)
         tprint(f"数据加载器初始化完成")
+        tokenizer = Tokenizer()
+        tprint(f"分词器初始化完成")
+        self.data_loader.set_tokenizer(tokenizer) # huggingface tokenizer要求在DataLoader后初始化
         self.evaluate_runner = EvaluateRunner(self.data_loader, train_config.batch_size)
         tprint(f"评估器初始化完成")
+
         self.text_generator = TextGenerator()
         tprint(f"文本生成器初始化完成")
         self.checkpoint_manager = CheckpointManager(self.ddp_env, train_config.save_interval_sec)
