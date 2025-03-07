@@ -482,7 +482,7 @@ class TextGenerator:
         tokens = torch.tensor(tokens, dtype=torch.long, device=device).unsqueeze(0)  # [1, seq_len]
         
         with torch.no_grad():
-            for _ in range(max_tokens):
+            while tokens.size(1) < max_tokens:
                 # 获取预测
                 if tokens.size(1) > block_size:  # 使用size(1)直接获取序列长度
                     # 如果序列太长，只保留后面的部分
@@ -524,10 +524,10 @@ class TextGenerator:
         
         # 生成不同提示的文本
         prompts = [
-            "用户：中华人民共和国的现在的主席是谁？\nAI：",
-            "用户：在大学里应该谈恋爱吗？\nAI：",
-            "用户：请根据规律填充这两个空缺的数字。 4, 3, 4, 3, 4, 3, （），（）\nAI：",
-            ""  # 空提示，完全由模型自由生成
+            # "用户：在大学里应该谈恋爱吗？\nAI：",
+            # "用户：请根据规律填充这两个空缺的数字。 4, 3, 4, 3, 4, 3, （），（）\nAI：",
+            # "",  # 空提示，完全由模型自由生成
+            "用户：中华人民共和国的现在的主席是谁？\nAI："
         ]
         
         tprint("训练完成！生成示例文本：")
@@ -540,7 +540,7 @@ class TextGenerator:
                     block_size=block_size,
                     tokenizer=tokenizer,
                     prompt=prompt,
-                    max_tokens=block_size,
+                    max_tokens=min(500, block_size),
                     temperature=0.1,
                     top_k=40,
                     device=device
