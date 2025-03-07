@@ -588,7 +588,7 @@ class CheckpointManager:
 
         return start_epoch
 
-    def check_save_checkpoint(self, model, optimizer, epoch, avg_train_loss, metrics):
+    def check_save_checkpoint(self, model, optimizer, epoch, avg_train_loss, avg_eval_loss):
         current_time = time.time()
         time_since_last_save = current_time - self.last_save_time
         
@@ -601,7 +601,7 @@ class CheckpointManager:
                     'model_state_dict': self._get_model_state_dict_to_save(model),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'train_loss': avg_train_loss,
-                    'val_loss': metrics['loss'],
+                    'val_loss': avg_eval_loss,
                 }
                 torch.save(save_dict, checkpoint_path)
                 tprint(f"检查点已保存到 {checkpoint_path}，距上次保存: {time_since_last_save:.2f}秒")
@@ -707,7 +707,7 @@ class Trainer:
             
             # 检查是否需要保存检查点
             if self.ddp_env.master_process:
-                self.checkpoint_manager.check_save_checkpoint(self.model, self.optimizer, epoch, avg_train_loss, metrics)
+                self.checkpoint_manager.check_save_checkpoint(self.model, self.optimizer, epoch, global_avg_train_loss, global_eval_avg_loss)
 
             self.ddp_env.barrier()
 
