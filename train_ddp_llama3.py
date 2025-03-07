@@ -337,15 +337,19 @@ class TrainDataLoader:
     def __init__(self, ddp_env, batch_size, block_size, tokenizer, use_data_percent=100, is_sft=False):
         self.fineweb_edu_chinese_v2_1_iter = None
         self.chinese_deepseek_r1_distill_data_110k_sft_iter = None
-
-        if is_sft:
-            self.chinese_deepseek_r1_distill_data_110k_sft_iter = self.load_chinese_deepseek_r1_distill_data_110k_sft(batch_size)
-        else:
-            self.fineweb_edu_chinese_v2_1_iter = self.load_fineweb_edu_chinese_v2_1(ddp_env, batch_size, use_data_percent)
-
         self.block_size = block_size
         self.tokenizer = tokenizer
+        self.ddp_env = ddp_env
+        self.use_data_percent = use_data_percent
+        self.batch_size = batch_size
         self.is_sft = is_sft
+        self.reload()
+
+    def reload(self):
+        if self.is_sft:
+            self.chinese_deepseek_r1_distill_data_110k_sft_iter = self.load_chinese_deepseek_r1_distill_data_110k_sft(self.batch_size)
+        else:
+            self.fineweb_edu_chinese_v2_1_iter = self.load_fineweb_edu_chinese_v2_1(self.ddp_env, self.batch_size, self.use_data_percent)
 
     @staticmethod
     def load_fineweb_edu_chinese_v2_1(ddp_env, batch_size, use_data_percent):
@@ -411,8 +415,9 @@ class TrainDataLoader:
                 
             except StopIteration:
                 # 如果数据集遍历完了，重新开始
-                dataset = self.dataset.shuffle(seed=42)
-                self.dataset_batch = iter(dataset.batch(batch_size=self.batch_size))
+                tprint("数据集遍历完了，重新开始")
+                time.sleep(120)
+                self.reload()
                 continue
 
             except Exception as e:
