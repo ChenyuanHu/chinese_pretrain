@@ -677,8 +677,8 @@ class Trainer:
         self.module_config = module_config
         self.tokenizer = tokenizer
 
-        assert self.train_config.dtype in {"float32", "float16", "bfloat16"}, f"dtype must be float32, float16 or bfloat16"
-        ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[self.train_config.dtype]
+        assert self.module_config.dtype in {"float32", "float16", "bfloat16"}, f"dtype must be float32, float16 or bfloat16"
+        ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[self.module_config.dtype]
         self.amp = torch.amp.autocast(device_type=self.ddp_env.device_type, dtype=ptdtype)
 
         # 计算并打印模型参数量
@@ -774,7 +774,6 @@ class Trainer:
 
 # 训练循环
 class TrainConfig:
-    dtype = "bfloat16"
     is_sft = False
     use_data_percent = 80
     batch_size = 4
@@ -791,6 +790,8 @@ class ModuleConfig:
     n_head: int = 32
     n_embd: int = 1600
     n_kv_head: int = 8
+    # amp
+    dtype = "bfloat16"
     # MLP
     ffn_dim_multiplier: float = 1.3
     multiple_of: int = 1024
