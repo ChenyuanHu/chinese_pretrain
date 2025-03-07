@@ -411,8 +411,9 @@ class EvaluateRunner:
             dist.all_reduce(total_loss, op=dist.ReduceOp.SUM)
             dist.all_reduce(total_tokens, op=dist.ReduceOp.SUM)
 
+        total_tokens = max(total_tokens, 1)
         avg_loss = (total_loss / total_tokens).item()
-        perplexity = torch.exp(torch.tensor(avg_loss)).item()
+        perplexity = torch.exp(total_loss / total_tokens).item()
 
         return avg_loss, perplexity
 
