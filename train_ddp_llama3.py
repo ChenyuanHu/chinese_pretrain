@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
-import tiktoken
+from transformers import AutoTokenizer
 from datasets import load_dataset
 import glob
 import math
@@ -319,19 +319,17 @@ class DDPEnv:
 
 class Tokenizer:
     def __init__(self):
-        # 使用tiktoken编码器
-        tprint("init tiktoken...")
-        self.enc = tiktoken.get_encoding("gpt2")
-        # 配置特殊token的处理
-        self.allowed_special = {"<|endoftext|>"}  # 允许的特殊token
-        self.disallowed_special = ()  # 禁用所有特殊token的检查
-        self.eot_token = self.enc.eot_token
+        # 使用 flagalpha/llama3-chinese-8b-instruct 的分词器
+        tprint("正在加载分词器...")
+        self.tokenizer = AutoTokenizer.from_pretrained("flagalpha/llama3-chinese-8b-instruct", trust_remote_code=True)
+        tprint(f"分词器加载成功！词汇表大小：{self.tokenizer.vocab_size}")
+        self.eot_token = self.tokenizer.eos_token_id
     
     def encode(self, text):
-        return self.enc.encode(text, allowed_special=self.allowed_special, disallowed_special=self.disallowed_special)
+        return self.tokenizer.encode(text)
 
     def decode(self, tokens):
-        return self.enc.decode(tokens)
+        return self.tokenizer.decode(tokens)
 
 
 class TrainDataLoader:
@@ -789,11 +787,11 @@ class TrainConfig:
 
 # 模型参数
 class ModuleConfig:
-    block_size: int = 1024
-    vocab_size: int = 50257
-    n_layer: int = 46
+    block_size: int = 8192
+    vocab_size: int = 128000  # 修改为新分词器的词汇表大小
+    n_layer: int = 32
     n_head: int = 32
-    n_embd: int = 1600
+    n_embd: int = 4096
     n_kv_head: int = 8
     # amp
     dtype = "bfloat16"
