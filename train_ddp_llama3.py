@@ -280,13 +280,13 @@ class DDPEnv:
             self.ddp_rank = 0
             self.ddp_local_rank = 0
             self.ddp_world_size = 1
-            device = "cpu"
+            self.device = "cpu"
             if torch.cuda.is_available():
-                device = "cuda"
+                self.device = "cuda"
             elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-                device = "mps"
-            tprint(f"使用设备: {device}")
-            self.device = device
+                self.device = "mps"
+            tprint(f"使用设备: {self.device}")
+            self.device_type = self.device
             self.master_process = True
         else:
             assert torch.cuda.is_available(), "for now i think we need CUDA for DDP"
@@ -296,6 +296,7 @@ class DDPEnv:
             self.ddp_world_size = int(os.environ['WORLD_SIZE'])
             self.device = f'cuda:{self.ddp_local_rank}'
             torch.cuda.set_device(self.device)
+            self.device_type = "cuda"
             self.master_process = self.ddp_rank == 0 # this process will do logging, checkpointing etc.
             tprint(f"ddp rank: {self.ddp_rank}, local rank: {self.ddp_local_rank}, world size: {self.ddp_world_size}")
 
@@ -676,6 +677,10 @@ class Trainer:
         self.module_config = module_config
         self.tokenizer = tokenizer
 
+        assert self.train_config.dtype in {"float32", "float16", "bfloat16"}, f"dtype must be float32, float16 or bfloat16"
+        ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[self.train_config.dtype]
+        self.amp = torch.amp.autocast(device_type=self.ddp_env.device_type, dtype=ptdtype)
+
         # 计算并打印模型参数量
         total_params = sum(p.numel() for p in self.model.parameters())
         trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
@@ -702,13 +707,15 @@ class Trainer:
                     x, y = self.data_loader.next(self.ddp_env.device)
                     
                     # 前向传播
-                    _, loss = self.model(x, y)
+                    with self.amp:
+                        _, loss = self.model(x, y)
                     
-                    # 确保损失是标量
-                    loss = loss.mean()  # 添加这行来确保损失是标量
-                    
-                    # 缩放损失以适应梯度累积
-                    scaled_loss = loss / self.train_config.gradient_accumulation_steps
+                        # 确保损失是标量
+                        loss = loss.mean()  # 添加这行来确保损失是标量
+                        
+                        # 缩放损失以适应梯度累积
+                        scaled_loss = loss / self.train_config.gradient_accumulation_steps
+
                     scaled_loss.backward()
                     
                     # 累计损失和token数
@@ -767,6 +774,7 @@ class Trainer:
 
 # 训练循环
 class TrainConfig:
+    dtype = "bfloat16"
     is_sft = False
     use_data_percent = 80
     batch_size = 4
