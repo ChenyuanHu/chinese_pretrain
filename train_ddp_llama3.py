@@ -321,15 +321,18 @@ class Tokenizer:
     def __init__(self):
         # 使用 flagalpha/llama3-chinese-8b-instruct 的分词器
         tprint("正在加载分词器...")
-        self.tokenizer = AutoTokenizer.from_pretrained("flagalpha/llama3-chinese-8b-instruct", trust_remote_code=True)
-        tprint(f"分词器加载成功！词汇表大小：{self.tokenizer.vocab_size}")
-        self.eot_token = self.tokenizer.eos_token_id
+        self.raw_tokenizer = AutoTokenizer.from_pretrained("flagalpha/llama3-chinese-8b-instruct", trust_remote_code=True)
+        tprint(f"分词器加载成功！词汇表大小：{self.raw_tokenizer.vocab_size}")
+        self.bos_token = self.raw_tokenizer.bos_token
+        self.eos_token_id = self.raw_tokenizer.eos_token_id
+        tprint(f"BOS token: {self.bos_token}")
+        tprint(f"EOS token ID: {self.eos_token_id}")
     
     def encode(self, text):
-        return self.tokenizer.encode(text)
+        return self.raw_tokenizer.encode(text)
 
     def decode(self, tokens):
-        return self.tokenizer.decode(tokens)
+        return self.raw_tokenizer.decode(tokens)
 
 
 class TrainDataLoader:
@@ -396,9 +399,9 @@ class TrainDataLoader:
                 xs = []
                 ys = []
                 for text in texts:
-                    tokens = self.tokenizer.encode(text)
+                    tokens = self.tokenizer.encode(self.tokenizer.bos_token + text)
                     if len(tokens) < self.block_size + 1:
-                        tokens = tokens + [self.tokenizer.eot_token] * (self.block_size + 1 - len(tokens))
+                        tokens = tokens + [self.tokenizer.eos_token_id] * (self.block_size + 1 - len(tokens))
                     else:
                         tokens = tokens[:self.block_size + 1]
                     
@@ -466,21 +469,14 @@ class TextGenerator:
     def generate_text(self, model, block_size, tokenizer, prompt="", max_tokens=100, temperature=1.0, top_k=50, device="cpu"):
         model.eval()
         
+        prompt = tokenizer.bos_token + prompt
         # 编码输入提示
-        if len(prompt) > 0:
-            tokens = tokenizer.encode(prompt)
-            if len(tokens) > block_size - max_tokens:
-                # 如果提示太长，只保留后面部分
-                tokens = tokens[-(block_size - max_tokens):]
-        else:
-            # 对于空提示，使用一个起始token作为种子
-            tokens = [tokenizer.eot_token]  # GPT-2的<|endoftext|> token，可作为起始点
+        tokens = tokenizer.encode(prompt)
+        if len(tokens) > block_size - max_tokens:
+            # 如果提示太长，只保留后面部分
+            tokens = tokens[-(block_size - max_tokens):]
         
         tokens = torch.tensor(tokens, dtype=torch.long, device=device).unsqueeze(0)  # [1, seq_len]
-        
-        # 确保tokens不是空张量
-        if tokens.size(1) == 0:
-            tokens = torch.tensor([[tokenizer.eot_token]], dtype=torch.long, device=device)  # 使用<|endoftext|>作为备选起始点
         
         with torch.no_grad():
             for _ in range(max_tokens):
@@ -510,19 +506,11 @@ class TextGenerator:
                 tokens = torch.cat([tokens, next_token], dim=1)
                 
                 # 如果生成了结束标记，提前结束
-                if next_token.item() == tokenizer.eot_token:
+                if next_token.item() == tokenizer.eos_token_id:
                     break
         
         # 解码生成的token序列
         generated_tokens = tokens[0].tolist()
-        
-        # 如果有提示，去掉提示部分
-        if prompt:
-            prompt_length = len(tokenizer.encode(prompt))
-            generated_tokens = generated_tokens[prompt_length:]
-        else:
-            # 对于空提示，去掉我们添加的起始token
-            generated_tokens = generated_tokens[1:]
         
         generated_text = tokenizer.decode(generated_tokens)
         return generated_text
@@ -788,7 +776,7 @@ class TrainConfig:
 # 模型参数
 class ModuleConfig:
     block_size: int = 8192
-    vocab_size: int = 128000  # 修改为新分词器的词汇表大小
+    vocab_size: int = 128256  # 词表大小实际是128000，但是eos token id是128001，所以对齐到128256
     n_layer: int = 32
     n_head: int = 32
     n_embd: int = 4096
