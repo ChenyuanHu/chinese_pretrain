@@ -780,19 +780,19 @@ class Trainer:
 class TrainConfig:
     is_sft = False
     use_data_percent = 80
-    batch_size = 4
+    batch_size = 1
     num_epochs = 10000
     steps_per_epoch = 1000  # 每个epoch训练多少批次
-    gradient_accumulation_steps = 1  # 梯度累积步数
+    gradient_accumulation_steps = 4  # 梯度累积步数
     save_interval_sec = 1800  # 每n秒保存一次模型
 
 # 模型参数
 class ModuleConfig:
-    block_size: int = 8192
+    block_size: int = 1280
     vocab_size: int = 128256  # 词表大小实际是128000，但是eos token id是128001，所以对齐到128256
     n_layer: int = 32
     n_head: int = 32
-    n_embd: int = 4096
+    n_embd: int = 2816
     n_kv_head: int = 8
     # amp
     dtype = "bfloat16"
