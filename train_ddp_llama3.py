@@ -394,35 +394,27 @@ class EvaluateRunner:
 
         self.val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
-    def evaluate(self, model, device):
-        model.eval()  # 设置模型为评估模式
-        total_loss = 0.0
-        total_tokens = 0
+    def evaluate(self, model, device, ddp_env):
+        model.eval()
+        total_loss = torch.tensor(0.0, device=device)
+        total_tokens = torch.tensor(0, device=device)
 
-        with torch.no_grad():  # 关闭梯度计算
+        with torch.no_grad():
             for x, y in self.val_loader:
                 x, y = x.to(device), y.to(device)
-                
-                # 前向传播
                 _, loss = model(x, y)
-                
-                # 确保损失是标量
-                loss = loss.mean()
-                
-                total_loss += loss.item() * y.numel()
+                total_loss += loss.sum().detach()
                 total_tokens += y.numel()
 
-        # 计算平均损失和困惑度
-        avg_loss = total_loss / total_tokens
+        # 同步所有进程的总损失和总token数
+        if ddp_env.enabled:
+            dist.all_reduce(total_loss, op=dist.ReduceOp.SUM)
+            dist.all_reduce(total_tokens, op=dist.ReduceOp.SUM)
+
+        avg_loss = (total_loss / total_tokens).item()
         perplexity = torch.exp(torch.tensor(avg_loss)).item()
 
-        metrics = {
-            "loss": avg_loss,
-            "perplexity": perplexity
-        }
-
-        return metrics
-
+        return avg_loss, perplexity
 
 class TextGenerator:
     def __init__(self):
@@ -694,25 +686,24 @@ class Trainer:
             # 在epoch结束时同步所有进程
             self.ddp_env.barrier()
             
-            # 计算平均训练损失和困惑度
-            avg_train_loss = total_train_loss / total_train_tokens
-            train_ppl = torch.exp(torch.tensor(avg_train_loss)).item()
-                
-            t1 = time.time()
-            
-            # 在验证集上评估
-            metrics = self.evaluate_runner.evaluate(self.model, self.ddp_env.device)
-            
-            tprint(f"Epoch [{epoch+1}/{self.train_config.num_epochs}], 用时: {(t1-t0):.2f}秒")
-            tprint(f"训练损失: {avg_train_loss:.4f}, 训练困惑度: {train_ppl:.4f}")
-            tprint(f"验证损失: {metrics['loss']:.4f}, 验证困惑度: {metrics['perplexity']:.4f}")
+
+            total_train_loss_tensor = torch.tensor(total_train_loss, device=self.ddp_env.device)
+            total_train_tokens_tensor = torch.tensor(total_train_tokens, device=self.ddp_env.device)
             if self.ddp_env.enabled:
-                dist.all_reduce(avg_train_loss, op=dist.ReduceOp.AVG)
-                dist.all_reduce(train_ppl, op=dist.ReduceOp.AVG)
-                dist.all_reduce(metrics['loss'], op=dist.ReduceOp.AVG)
-                dist.all_reduce(metrics['perplexity'], op=dist.ReduceOp.AVG)
-            tprint(f"所有进程平均：训练损失: {avg_train_loss:.4f}, 训练困惑度: {train_ppl:.4f}")
-            tprint(f"所有进程平均：验证损失: {metrics['loss']:.4f}, 验证困惑度: {metrics['perplexity']:.4f}")
+                dist.all_reduce(total_train_loss_tensor, op=dist.ReduceOp.SUM)
+                dist.all_reduce(total_train_tokens_tensor, op=dist.ReduceOp.SUM)
+            global_train_loss = total_train_loss_tensor.item()
+            global_train_tokens = total_train_tokens_tensor.item()
+            global_avg_train_loss = global_train_loss / global_train_tokens
+            global_train_ppl = torch.exp(torch.tensor(global_avg_train_loss)).item()
+
+            # 在验证集上评估
+            global_eval_avg_loss, global_eval_ppl = self.evaluate_runner.evaluate(self.model, self.ddp_env.device, self.ddp_env)
+
+            t1 = time.time()
+            tprint(f"Epoch [{epoch+1}/{self.train_config.num_epochs}], 用时: {(t1-t0):.2f}秒")
+            tprint(f"全局训练损失: {global_avg_train_loss:.4f}, 困惑度: {global_train_ppl:.4f}")
+            tprint(f"全局验证损失: {global_eval_avg_loss:.4f}, 验证困惑度: {global_eval_ppl:.4f}")
             
             # 检查是否需要保存检查点
             if self.ddp_env.master_process:
