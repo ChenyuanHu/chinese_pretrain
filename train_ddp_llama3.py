@@ -649,16 +649,23 @@ class CheckpointManager:
 class Trainer:
     def __init__(self, train_config, module_config):
         self.ddp_env = DDPEnv()
+        tprint(f"DDP环境初始化完成")
         self.ddp_env.ddp_model_init(MyModule(module_config))
         self.model = self.ddp_env.get_model()
+        tprint(f"模型初始化完成")
         self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4)
         tokenizer = Tokenizer()
+        tprint(f"分词器初始化完成")
         self.data_loader = TrainDataLoader(self.ddp_env, train_config.batch_size, module_config.block_size,
                                                        tokenizer, use_data_percent=train_config.use_data_percent,
                                                        is_sft=train_config.is_sft)
+        tprint(f"数据加载器初始化完成")
         self.evaluate_runner = EvaluateRunner(self.data_loader, train_config.batch_size)
+        tprint(f"评估器初始化完成")
         self.text_generator = TextGenerator()
+        tprint(f"文本生成器初始化完成")
         self.checkpoint_manager = CheckpointManager(self.ddp_env, train_config.save_interval_sec)
+        tprint(f"检查点管理器初始化完成")
         self.train_config = train_config
         self.module_config = module_config
         self.tokenizer = tokenizer
