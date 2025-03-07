@@ -788,11 +788,11 @@ class TrainConfig:
 
 # 模型参数
 class ModuleConfig:
-    block_size: int = 1280
+    block_size: int = 1024
     vocab_size: int = 128256  # 词表大小实际是128000，但是eos token id是128001，所以对齐到128256
     n_layer: int = 32
     n_head: int = 32
-    n_embd: int = 2816
+    n_embd: int = 2560
     n_kv_head: int = 8
     # amp
     dtype = "bfloat16"
