@@ -384,7 +384,7 @@ class TrainDataLoader:
         items = next(self.chinese_deepseek_r1_distill_data_110k_sft_iter)
         texts = []
         for i in range(len(items["instruction"])):
-            text = "用户：" + items["instruction"][i] + "\n" + "AI：" + items["output"][i]
+            text = "系统提示：你是一个叫小伽的人工智能小助手，你的思考过程放在<think></think>标签中" + "\n" + "用户：" + items["instruction"][i] + "\n" + "助手：" + items["output"][i]
             texts.append(text)
         return texts
 
@@ -465,38 +465,45 @@ class EvaluateRunner:
         return avg_loss, perplexity
 
 class TextGenerator:
-    def __init__(self):
-        pass
+    def __init__(self, model, block_size, tokenizer, prompts, max_tokens=100, temperature=0.1, top_k=40, device="cpu"):
+        self.model = model
+        self.block_size = block_size
+        self.tokenizer = tokenizer
+        self.prompts = prompts
+        self.max_tokens = max_tokens
+        self.temperature = temperature
+        self.top_k = top_k
+        self.device = device
         
     # 定义文本生成函数
-    def generate_text(self, model, block_size, tokenizer, prompt="", max_tokens=100, temperature=1.0, top_k=50, device="cpu"):
-        model.eval()
+    def generate_text(self, prompt):
+        self.model.eval()
         
-        prompt = tokenizer.bos_token + prompt
+        prompt = self.tokenizer.bos_token + prompt
         # 编码输入提示
-        tokens = tokenizer.encode(prompt)
-        if len(tokens) > block_size - max_tokens:
+        tokens = self.tokenizer.encode(prompt)
+        if len(tokens) > self.block_size - self.max_tokens:
             # 如果提示太长，只保留后面部分
-            tokens = tokens[-(block_size - max_tokens):]
+            tokens = tokens[-(self.block_size - self.max_tokens):]
         
-        tokens = torch.tensor(tokens, dtype=torch.long, device=device).unsqueeze(0)  # [1, seq_len]
+        tokens = torch.tensor(tokens, dtype=torch.long, device=self.device).unsqueeze(0)  # [1, seq_len]
         
         with torch.no_grad():
-            while tokens.size(1) < max_tokens:
+            while tokens.size(1) < self.max_tokens:
                 # 获取预测
-                if tokens.size(1) > block_size:  # 使用size(1)直接获取序列长度
+                if tokens.size(1) > self.block_size:  # 使用size(1)直接获取序列长度
                     # 如果序列太长，只保留后面的部分
-                    tokens = tokens[:, -block_size:]
+                    tokens = tokens[:, -(self.block_size):]
                 
                 # 前向传播
-                logits, _ = model(tokens)
+                logits, _ = self.model(tokens)
                 
                 # 获取最后一个位置的预测
-                logits = logits[:, -1, :] / temperature
+                logits = logits[:, -1, :] / self.temperature
                 
                 # 应用top-k采样
-                if top_k > 0:
-                    v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+                if self.top_k > 0:
+                    v, _ = torch.topk(logits, min(self.top_k, logits.size(-1)))
                     logits[logits < v[:, [-1]]] = float('-inf')
                 
                 # 应用softmax获取概率分布
@@ -509,42 +516,25 @@ class TextGenerator:
                 tokens = torch.cat([tokens, next_token], dim=1)
                 
                 # 如果生成了结束标记，提前结束
-                if next_token.item() == tokenizer.eos_token_id:
+                if next_token.item() == self.tokenizer.eos_token_id:
                     break
         
         # 解码生成的token序列
         generated_tokens = tokens[0].tolist()
         
-        generated_text = tokenizer.decode(generated_tokens)
+        generated_text = self.tokenizer.decode(generated_tokens)
         return generated_text
 
     # 在训练循环中生成文本的辅助函数
-    def generate_examples(self, model, block_size, tokenizer, device):
-        model.eval()  # 确保模型处于评估模式
-        
-        # 生成不同提示的文本
-        prompts = [
-            # "用户：在大学里应该谈恋爱吗？\nAI：",
-            # "用户：请根据规律填充这两个空缺的数字。 4, 3, 4, 3, 4, 3, （），（）\nAI：",
-            # "",  # 空提示，完全由模型自由生成
-            "用户：中华人民共和国的现在的主席是谁？\nAI："
-        ]
+    def generate_examples(self):
+        self.model.eval()  # 确保模型处于评估模式
         
         tprint("训练完成！生成示例文本：")
         
-        for prompt in prompts:
+        for prompt in self.prompts:
             tprint(f"\n提示: {prompt if prompt else '(无提示)'}")
             try:
-                generated = self.generate_text(
-                    model=model,
-                    block_size=block_size,
-                    tokenizer=tokenizer,
-                    prompt=prompt,
-                    max_tokens=min(500, block_size),
-                    temperature=0.1,
-                    top_k=40,
-                    device=device
-                )
+                generated = self.generate_text(prompt)
                 tprint(f"生成: {generated}")
             except Exception as e:
                 tprint(f"生成文本时发生错误: {str(e)}")
@@ -650,7 +640,7 @@ class CheckpointManager:
 
 
 class Trainer:
-    def __init__(self, train_config, module_config):
+    def __init__(self, train_config, module_config, prompts):
         self.ddp_env = DDPEnv()
         tprint(f"DDP环境初始化完成")
         self.ddp_env.ddp_model_init(MyModule(module_config))
@@ -662,19 +652,18 @@ class Trainer:
                                                        tokenizer=None, use_data_percent=train_config.use_data_percent,
                                                        is_sft=train_config.is_sft)
         tprint(f"数据加载器初始化完成")
-        tokenizer = Tokenizer()
+        self.tokenizer = Tokenizer()
         tprint(f"分词器初始化完成")
-        self.data_loader.set_tokenizer(tokenizer) # huggingface tokenizer要求在DataLoader后初始化
+        self.data_loader.set_tokenizer(self.tokenizer) # huggingface tokenizer要求在DataLoader后初始化
         self.evaluate_runner = EvaluateRunner(self.data_loader, train_config.batch_size)
         tprint(f"评估器初始化完成")
 
-        self.text_generator = TextGenerator()
+        self.text_generator = TextGenerator(self.model, module_config.block_size, self.tokenizer, prompts, max_tokens=100, temperature=0.1, top_k=40, device=self.ddp_env.device)
         tprint(f"文本生成器初始化完成")
         self.checkpoint_manager = CheckpointManager(self.ddp_env, train_config.save_interval_sec)
         tprint(f"检查点管理器初始化完成")
         self.train_config = train_config
         self.module_config = module_config
-        self.tokenizer = tokenizer
 
         assert self.module_config.dtype in {"float32", "float16", "bfloat16"}, f"dtype must be float32, float16 or bfloat16"
         ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[self.module_config.dtype]
@@ -769,7 +758,7 @@ class Trainer:
             self.ddp_env.barrier()
 
             # 每个epoch结束后生成示例文本
-            self.text_generator.generate_examples(self.model, self.module_config.block_size, self.tokenizer, self.ddp_env.device)
+            self.text_generator.generate_examples()
 
     def cleanup(self):
         if self.ddp_env.enabled:
@@ -804,6 +793,17 @@ class ModuleConfig:
     use_scaled_rope: bool = True
 
 if __name__ == "__main__":
+    # 生成不同提示的文本
+    sft_prompts = [
+        "系统提示：你是一个叫小伽的人工智能小助手，你的思考过程放在<think></think>标签中\n用户：请根据规律填充这两个空缺的数字。 4, 3, 4, 3, 4, 3, （），（）\n助手：",
+        "系统提示：你是一个叫小伽的人工智能小助手，你的思考过程放在<think></think>标签中\n用户：中华人民共和国的现在的主席是谁？\n助手：",
+        "系统提示：你是一个叫小伽的人工智能小助手，你的思考过程放在<think></think>标签中\n用户：你是谁？\n助手："
+    ]
+    pretrain_prompts = [
+        "中华人民共和国的现在的主席是",
+        ""
+    ]
+
     # 设置随机种子以确保可重复性
     torch.manual_seed(42)
     if torch.cuda.is_available():
@@ -811,6 +811,6 @@ if __name__ == "__main__":
 
     train_config = TrainConfig()
     module_config = ModuleConfig()
-    trainer = Trainer(train_config, module_config)
+    trainer = Trainer(train_config, module_config, sft_prompts if train_config.is_sft else pretrain_prompts)
     trainer.train()
     trainer.cleanup()
