@@ -19,6 +19,7 @@ import typing
 import os
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
+import random
 
 # 导入日志模块
 from log import tprint
@@ -527,18 +528,18 @@ class TextGenerator:
 
     # 在训练循环中生成文本的辅助函数
     def generate_examples(self):
+        tprint("生成示例文本：")
+        
         self.model.eval()  # 确保模型处于评估模式
-        
-        tprint("训练完成！生成示例文本：")
-        
-        for prompt in self.prompts:
-            tprint(f"\n提示: {prompt if prompt else '(无提示)'}")
-            try:
-                generated = self.generate_text(prompt)
-                tprint(f"生成: {generated}")
-            except Exception as e:
-                tprint(f"生成文本时发生错误: {str(e)}")
-            tprint("-"*50)
+        # 随机选择一个提示
+        prompt = random.choice(self.prompts)
+        tprint(f"\n提示: {prompt if prompt else '(无提示)'}")
+        try:
+            generated = self.generate_text(prompt)
+            tprint(f"生成: {generated}")
+        except Exception as e:
+            tprint(f"生成文本时发生错误: {str(e)}")
+        tprint("-"*50)
 
 
 class CheckpointManager:
