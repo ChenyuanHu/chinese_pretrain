@@ -466,14 +466,14 @@ class EvaluateRunner:
         return avg_loss, perplexity
 
 class TextGenerator:
-    def __init__(self, model, block_size, tokenizer, prompts, max_tokens=100, temperature=0.1, top_k=40, device="cpu"):
+    def __init__(self, model, block_size, tokenizer, demo_config, device="cpu"):
         self.model = model
         self.block_size = block_size
         self.tokenizer = tokenizer
-        self.prompts = prompts
-        self.max_tokens = max_tokens
-        self.temperature = temperature
-        self.top_k = top_k
+        self.prompts = demo_config.prompts
+        self.max_tokens = demo_config.max_tokens
+        self.temperature = demo_config.temperature
+        self.top_k = demo_config.top_k
         self.device = device
         
     # 定义文本生成函数
@@ -641,7 +641,7 @@ class CheckpointManager:
 
 
 class Trainer:
-    def __init__(self, train_config, module_config, prompts):
+    def __init__(self, train_config, module_config, demo_config):
         self.ddp_env = DDPEnv()
         tprint(f"DDP环境初始化完成")
         self.ddp_env.ddp_model_init(MyModule(module_config))
@@ -659,7 +659,7 @@ class Trainer:
         self.evaluate_runner = EvaluateRunner(self.data_loader, train_config.batch_size)
         tprint(f"评估器初始化完成")
 
-        self.text_generator = TextGenerator(self.model, module_config.block_size, self.tokenizer, prompts, max_tokens=100, temperature=0.1, top_k=40, device=self.ddp_env.device)
+        self.text_generator = TextGenerator(self.model, module_config.block_size, self.tokenizer, demo_config, device=self.ddp_env.device)
         tprint(f"文本生成器初始化完成")
         self.checkpoint_manager = CheckpointManager(self.ddp_env, train_config.save_interval_sec)
         tprint(f"检查点管理器初始化完成")
@@ -793,7 +793,7 @@ class ModuleConfig:
     rope_theta: float = 500000.0
     use_scaled_rope: bool = True
 
-if __name__ == "__main__":
+class DemoConfig:
     # 生成不同提示的文本
     sft_prompts = [
         "系统提示：你是一个叫小伽的人工智能小助手，你的思考过程放在<think></think>标签中\n用户：请根据规律填充这两个空缺的数字。 4, 3, 4, 3, 4, 3, （），（）\n助手：",
@@ -804,6 +804,11 @@ if __name__ == "__main__":
         "中华人民共和国的现在的主席是",
         ""
     ]
+    max_tokens = 100
+    temperature = 0.1
+    top_k = 40
+
+if __name__ == "__main__":
 
     # 设置随机种子以确保可重复性
     torch.manual_seed(42)
@@ -812,6 +817,8 @@ if __name__ == "__main__":
 
     train_config = TrainConfig()
     module_config = ModuleConfig()
-    trainer = Trainer(train_config, module_config, sft_prompts if train_config.is_sft else pretrain_prompts)
+    demo_config = DemoConfig()
+    demo_config.prompts = demo_config.sft_prompts if train_config.is_sft else demo_config.pretrain_prompts
+    trainer = Trainer(train_config, module_config, demo_config)
     trainer.train()
     trainer.cleanup()
