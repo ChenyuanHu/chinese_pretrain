@@ -7,9 +7,9 @@ from log import tprint
 class TorchrunEnv:
     def __init__(self):
         tprint("check torchrun env...")
-        self.enabled = int(os.environ.get('RANK', -1)) != -1 # is this a ddp run?
+        self.enabled = int(os.environ.get('RANK', -1)) != -1 # is this a torchrun run?
         if not self.enabled:
-            tprint("not distributed env")
+            tprint("not torchrun env")
             self.rank = 0
             self.local_rank = 0
             self.world_size = 1
