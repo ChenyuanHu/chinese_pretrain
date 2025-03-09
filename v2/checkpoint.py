@@ -216,7 +216,7 @@ class CheckpointManager:
 
     def try_load_checkpoint(self, model, optimizer):
         start_epoch = self.dcp_manager.try_load_checkpoint(model, optimizer)
-        if start_epoch is None:
+        if start_epoch == 0:
             start_epoch = self.normal_manager.try_load_checkpoint(model, optimizer)
         return start_epoch
 
