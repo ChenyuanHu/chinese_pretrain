@@ -17,7 +17,7 @@ import glob
 import math
 import typing
 import os
-from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 import torch.distributed as dist
 import random
 
@@ -304,7 +304,7 @@ class DDPEnv:
     def ddp_model_init(self, model):
         model.to(self.device)
         if self.enabled:
-            self.model = DDP(model, device_ids=[self.ddp_local_rank])
+            self.model = FSDP(model)
         else:
             self.model = model
 
@@ -314,7 +314,7 @@ class DDPEnv:
     def barrier(self):
         if self.enabled:
             tprint("wait barrier")
-            dist.barrier()
+            dist.barrier(device_ids=[self.ddp_local_rank])  # 指定当前进程的GPU设备
             tprint("barrier done")
 
 
@@ -565,6 +565,12 @@ class CheckpointManager:
 
     # 兼容DP/DDP的模型dict，他们的key会多一个module.前缀
     def _load_model_state_dict(self, model, model_state_dict):
+        # 如果是FSDP模型，使用FSDP特定的加载方法
+        if isinstance(model, torch.distributed.fsdp.FullyShardedDataParallel):
+            with torch.distributed.fsdp.FullStateDictConfig(offload_to_cpu=True, rank0_only=True):
+                with torch.distributed.fsdp.state_dict_type(model, torch.distributed.fsdp.StateDictType.FULL_STATE_DICT):
+                    return model_state_dict
+        
         # 检查是否存在 "module." 前缀的键名
         has_module_prefix = any(k.startswith("module.") for k in model_state_dict.keys())
         
@@ -580,8 +586,13 @@ class CheckpointManager:
         return model_state_dict
 
     def _get_model_state_dict_to_save(self, model):
-        # 如果模型被 DataParallel 或 DDP 包装，提取内部模型
-        if isinstance(model, (torch.nn.DataParallel, torch.nn.parallel.DistributedDataParallel)):
+        # 如果是FSDP模型，使用FSDP特定的状态字典方法
+        if isinstance(model, torch.distributed.fsdp.FullyShardedDataParallel):
+            with torch.distributed.fsdp.FullStateDictConfig(offload_to_cpu=True, rank0_only=True):
+                with torch.distributed.fsdp.state_dict_type(model, torch.distributed.fsdp.StateDictType.FULL_STATE_DICT):
+                    return model.state_dict()
+        # 如果是其他类型的并行模型
+        elif isinstance(model, (torch.nn.DataParallel, torch.nn.parallel.DistributedDataParallel)):
             return model.module.state_dict()
         else:
             return model.state_dict()
@@ -770,10 +781,10 @@ class Trainer:
 class TrainConfig:
     is_sft = False
     use_data_percent = 80
-    batch_size = 1
+    batch_size = 4
     num_epochs = 10000
-    steps_per_epoch = 5000  # 每个epoch训练多少批次
-    gradient_accumulation_steps = 4  # 梯度累积步数
+    steps_per_epoch = 1000  # 每个epoch训练多少批次
+    gradient_accumulation_steps = 1  # 梯度累积步数
     save_interval_sec = 1800  # 每n秒保存一次模型
 
 # 模型参数
