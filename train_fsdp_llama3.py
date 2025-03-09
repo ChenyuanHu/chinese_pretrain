@@ -273,10 +273,10 @@ class MyModule(nn.Module):
 
 class TorchrunEnv:
     def __init__(self):
-        tprint("check ddp env...")
+        tprint("check torchrun env...")
         self.enabled = int(os.environ.get('RANK', -1)) != -1 # is this a ddp run?
         if not self.enabled:
-            tprint("not ddp env")
+            tprint("not distributed env")
             self.rank = 0
             self.local_rank = 0
             self.world_size = 1
@@ -289,7 +289,7 @@ class TorchrunEnv:
             self.device_type = self.device
             self.master_process = True
         else:
-            assert torch.cuda.is_available(), "for now i think we need CUDA for DDP"
+            assert torch.cuda.is_available(), "for now i think we need CUDA for torch distributed training"
             dist.init_process_group(backend="nccl")
             self.rank = int(os.environ['RANK'])
             self.local_rank = int(os.environ['LOCAL_RANK'])
