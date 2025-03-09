@@ -210,9 +210,9 @@ class DCPCheckpointManager:
 
 
 class CheckpointManager:
-    def __init__(self, env):
-        self.normal_manager = NormalCheckpointManager(env)
-        self.dcp_manager = DCPCheckpointManager(env)
+    def __init__(self, env, save_interval_sec):
+        self.normal_manager = NormalCheckpointManager(env, save_interval_sec)
+        self.dcp_manager = DCPCheckpointManager(env, save_interval_sec)
 
     def try_load_checkpoint(self, model, optimizer):
         start_epoch = self.dcp_manager.try_load_checkpoint(model, optimizer)
