@@ -271,16 +271,15 @@ class MyModule(nn.Module):
         return logits, loss
 
 
-
-class DDPEnv:
+class TorchrunEnv:
     def __init__(self):
         tprint("check ddp env...")
         self.enabled = int(os.environ.get('RANK', -1)) != -1 # is this a ddp run?
         if not self.enabled:
             tprint("not ddp env")
-            self.ddp_rank = 0
-            self.ddp_local_rank = 0
-            self.ddp_world_size = 1
+            self.rank = 0
+            self.local_rank = 0
+            self.world_size = 1
             self.device = "cpu"
             if torch.cuda.is_available():
                 self.device = "cuda"
@@ -292,16 +291,16 @@ class DDPEnv:
         else:
             assert torch.cuda.is_available(), "for now i think we need CUDA for DDP"
             dist.init_process_group(backend="nccl")
-            self.ddp_rank = int(os.environ['RANK'])
-            self.ddp_local_rank = int(os.environ['LOCAL_RANK'])
-            self.ddp_world_size = int(os.environ['WORLD_SIZE'])
-            self.device = f'cuda:{self.ddp_local_rank}'
+            self.rank = int(os.environ['RANK'])
+            self.local_rank = int(os.environ['LOCAL_RANK'])
+            self.world_size = int(os.environ['WORLD_SIZE'])
+            self.device = f'cuda:{self.local_rank}'
             torch.cuda.set_device(self.device)
             self.device_type = "cuda"
-            self.master_process = self.ddp_rank == 0 # this process will do logging, checkpointing etc.
-            tprint(f"ddp rank: {self.ddp_rank}, local rank: {self.ddp_local_rank}, world size: {self.ddp_world_size}")
+            self.master_process = self.rank == 0 # this process will do logging, checkpointing etc.
+            tprint(f"ddp rank: {self.rank}, local rank: {self.local_rank}, world size: {self.world_size}")
 
-    def ddp_model_init(self, model):
+    def model_init(self, model):
         model.to(self.device)
         if self.enabled:
             self.model = FSDP(model)
@@ -314,7 +313,7 @@ class DDPEnv:
     def barrier(self):
         if self.enabled:
             tprint("wait barrier")
-            dist.barrier(device_ids=[self.ddp_local_rank])  # 指定当前进程的GPU设备
+            dist.barrier(device_ids=[self.local_rank])  # 指定当前进程的GPU设备
             tprint("barrier done")
 
 
@@ -337,12 +336,12 @@ class Tokenizer:
 
 
 class TrainDataLoader:
-    def __init__(self, ddp_env, batch_size, block_size, tokenizer=None, use_data_percent=100, is_sft=False):
+    def __init__(self, env, batch_size, block_size, tokenizer=None, use_data_percent=100, is_sft=False):
         self.fineweb_edu_chinese_v2_1_iter = None
         self.chinese_deepseek_r1_distill_data_110k_sft_iter = None
         self.block_size = block_size
         self.tokenizer = tokenizer
-        self.ddp_env = ddp_env
+        self.env = env
         self.use_data_percent = use_data_percent
         self.batch_size = batch_size
         self.is_sft = is_sft
@@ -355,16 +354,16 @@ class TrainDataLoader:
         if self.is_sft:
             self.chinese_deepseek_r1_distill_data_110k_sft_iter = self.load_chinese_deepseek_r1_distill_data_110k_sft(self.batch_size)
         else:
-            self.fineweb_edu_chinese_v2_1_iter = self.load_fineweb_edu_chinese_v2_1(self.ddp_env, self.batch_size, self.use_data_percent)
+            self.fineweb_edu_chinese_v2_1_iter = self.load_fineweb_edu_chinese_v2_1(self.env, self.batch_size, self.use_data_percent)
 
     @staticmethod
-    def load_fineweb_edu_chinese_v2_1(ddp_env, batch_size, use_data_percent):
-        percent_per_process = int(use_data_percent / ddp_env.ddp_world_size)
-        offset_start = ddp_env.ddp_rank * percent_per_process
+    def load_fineweb_edu_chinese_v2_1(env, batch_size, use_data_percent):
+        percent_per_process = int(use_data_percent / env.world_size)
+        offset_start = env.rank * percent_per_process
         offset_end = offset_start + percent_per_process
         assert offset_end <= 100, f"offset_end({offset_end}) must be less than 100"
 
-        tprint(f"加载FineWebEduChinese数据集，只下载和处理4-5评分范围的高质量内容. 第{ddp_env.ddp_rank}个进程，从{offset_start}%到{offset_end}%")
+        tprint(f"加载FineWebEduChinese数据集，只下载和处理4-5评分范围的高质量内容. 第{env.rank}个进程，从{offset_start}%到{offset_end}%")
         raw_dataset = load_dataset("opencsg/Fineweb-Edu-Chinese-V2.1", data_dir = "4_5", split=f"train[{offset_start}%:{offset_end}%]")
 
         generator = torch.Generator()
@@ -448,7 +447,7 @@ class EvaluateRunner:
 
         self.val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
-    def evaluate(self, model, device, ddp_env):
+    def evaluate(self, model, device, env):
         model.eval()
         total_loss = torch.tensor(0.0, device=device)
         total_tokens = torch.tensor(0, device=device)
@@ -461,7 +460,7 @@ class EvaluateRunner:
                 total_tokens += y.numel()
 
         # 同步所有进程的总损失和总token数
-        if ddp_env.enabled:
+        if env.enabled:
             dist.all_reduce(total_loss, op=dist.ReduceOp.SUM)
             dist.all_reduce(total_tokens, op=dist.ReduceOp.SUM)
 
@@ -549,8 +548,8 @@ class TextGenerator:
 
 
 class CheckpointManager:
-    def __init__(self, ddp_env, save_interval_sec):
-        self.ddp_env = ddp_env
+    def __init__(self, env, save_interval_sec):
+        self.env = env
         # 记录上次保存模型的时间
         self.last_save_time = time.time()
         self.checkpoint_dir = "checkpoints"
@@ -578,8 +577,8 @@ class CheckpointManager:
         start_epoch = 0
         if latest_checkpoint:
             tprint(f"发现最新的checkpoint: {latest_checkpoint}")
-            if self.ddp_env.enabled:
-                map_location = { "cuda:%d" % 0 : "cuda:%d" % self.ddp_env.ddp_local_rank }
+            if self.env.enabled:
+                map_location = { "cuda:%d" % 0 : "cuda:%d" % self.env.local_rank }
             else:
                 map_location = None
             try:
@@ -626,14 +625,14 @@ class CheckpointManager:
 
 class Trainer:
     def __init__(self, train_config, module_config, demo_config):
-        self.ddp_env = DDPEnv()
+        self.env = TorchrunEnv()
         tprint(f"DDP环境初始化完成")
-        self.ddp_env.ddp_model_init(MyModule(module_config))
-        self.model = self.ddp_env.get_model()
+        self.env.model_init(MyModule(module_config))
+        self.model = self.env.get_model()
         tprint(f"模型初始化完成")
         self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4)
 
-        self.data_loader = TrainDataLoader(self.ddp_env, train_config.batch_size, module_config.block_size,
+        self.data_loader = TrainDataLoader(self.env, train_config.batch_size, module_config.block_size,
                                                        tokenizer=None, use_data_percent=train_config.use_data_percent,
                                                        is_sft=train_config.is_sft)
         tprint(f"数据加载器初始化完成")
@@ -643,16 +642,16 @@ class Trainer:
         self.evaluate_runner = EvaluateRunner(self.data_loader, train_config.batch_size)
         tprint(f"评估器初始化完成")
 
-        self.text_generator = TextGenerator(self.model, module_config.block_size, self.tokenizer, demo_config, device=self.ddp_env.device)
+        self.text_generator = TextGenerator(self.model, module_config.block_size, self.tokenizer, demo_config, device=self.env.device)
         tprint(f"文本生成器初始化完成")
-        self.checkpoint_manager = CheckpointManager(self.ddp_env, train_config.save_interval_sec)
+        self.checkpoint_manager = CheckpointManager(self.env, train_config.save_interval_sec)
         tprint(f"检查点管理器初始化完成")
         self.train_config = train_config
         self.module_config = module_config
 
         assert self.module_config.dtype in {"float32", "float16", "bfloat16"}, f"dtype must be float32, float16 or bfloat16"
         ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[self.module_config.dtype]
-        self.amp = torch.amp.autocast(device_type=self.ddp_env.device_type, dtype=ptdtype)
+        self.amp = torch.amp.autocast(device_type=self.env.device_type, dtype=ptdtype)
 
         # 计算并打印模型参数量
         total_params = sum(p.numel() for p in self.model.parameters())
@@ -663,7 +662,7 @@ class Trainer:
 
     def train(self):
         start_epoch = self.checkpoint_manager.try_load_checkpoint(self.model, self.optimizer)
-        self.ddp_env.barrier()
+        self.env.barrier()
 
         for epoch in range(start_epoch, self.train_config.num_epochs):
             self.model.train()
@@ -677,7 +676,7 @@ class Trainer:
             for step in range(self.train_config.steps_per_epoch):
                 try:
                     # 获取下一批数据
-                    x, y = self.data_loader.next(self.ddp_env.device)
+                    x, y = self.data_loader.next(self.env.device)
                     
                     # 前向传播
                     with self.amp:
@@ -701,22 +700,22 @@ class Trainer:
                         self.optimizer.zero_grad()
                     
                     current_time = time.time()
-                    if self.ddp_env.master_process and current_time - last_print_time >= 30:  # 每30秒打印一次
+                    if self.env.master_process and current_time - last_print_time >= 30:  # 每30秒打印一次
                         tokens_per_sec = total_train_tokens / (current_time - t0)
                         tprint(f"Epoch {epoch+1}, Step {step+1}/{self.train_config.steps_per_epoch}, Loss: {loss.item():.4f}, Tokens/s: {tokens_per_sec:.2f}")
                         last_print_time = current_time
                         
                 except Exception as e:
-                    tprint(f"进程 {self.ddp_env.ddp_rank} 在训练步骤中遇到错误: {str(e)}")
+                    tprint(f"进程 {self.env.rank} 在训练步骤中遇到错误: {str(e)}")
                     raise e
             
             # 在epoch结束时同步所有进程
-            self.ddp_env.barrier()
+            self.env.barrier()
             
 
-            total_train_loss_tensor = torch.tensor(total_train_loss, device=self.ddp_env.device)
-            total_train_tokens_tensor = torch.tensor(total_train_tokens, device=self.ddp_env.device)
-            if self.ddp_env.enabled:
+            total_train_loss_tensor = torch.tensor(total_train_loss, device=self.env.device)
+            total_train_tokens_tensor = torch.tensor(total_train_tokens, device=self.env.device)
+            if self.env.enabled:
                 dist.all_reduce(total_train_loss_tensor, op=dist.ReduceOp.SUM)
                 dist.all_reduce(total_train_tokens_tensor, op=dist.ReduceOp.SUM)
             global_train_loss = total_train_loss_tensor.item()
@@ -728,7 +727,7 @@ class Trainer:
             global_tokens_per_sec = global_train_tokens / (time.time() - t0)
 
             # 在验证集上评估
-            global_eval_avg_loss, global_eval_ppl = self.evaluate_runner.evaluate(self.model, self.ddp_env.device, self.ddp_env)
+            global_eval_avg_loss, global_eval_ppl = self.evaluate_runner.evaluate(self.model, self.env.device, self.env)
 
             t1 = time.time()
             tprint(f"Epoch [{epoch+1}/{self.train_config.num_epochs}], 用时: {(t1-t0):.2f}秒")
@@ -737,16 +736,16 @@ class Trainer:
             tprint(f"训练集群处理速度: {global_tokens_per_sec:.2f} tokens/s")
             
             # 检查是否需要保存检查点
-            if self.ddp_env.master_process:
+            if self.env.master_process:
                 self.checkpoint_manager.check_save_checkpoint(self.model, self.optimizer, epoch, global_avg_train_loss, global_eval_avg_loss)
 
-            self.ddp_env.barrier()
+            self.env.barrier()
 
             # 每个epoch结束后生成示例文本
             self.text_generator.generate_examples()
 
     def cleanup(self):
-        if self.ddp_env.enabled:
+        if self.env.enabled:
             dist.destroy_process_group()
 
 
