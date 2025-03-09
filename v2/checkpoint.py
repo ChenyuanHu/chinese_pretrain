@@ -15,6 +15,7 @@ class NormalCheckpointManager:
         self.env = env
         # 记录上次保存模型的时间
         self.last_save_time = time.time()
+        self.last_save_epoch = 0
         self.checkpoint_dir = "checkpoints"
         self.save_interval_sec = save_interval_sec
         # 创建检查点目录（如果不存在）
@@ -49,6 +50,7 @@ class NormalCheckpointManager:
                 # 首先尝试使用weights_only=True加载
                 model.load_state_dict(state_dict['model_state_dict'])
                 start_epoch = state_dict.get('epoch', 0)
+                self.last_save_epoch = start_epoch
                 tprint(f"成功加载checkpoint，将从epoch {start_epoch} 继续训练")
             except Exception as e:
                 tprint(f"使用weights_only=True模型加载失败: {str(e)}, 退出")
@@ -85,8 +87,9 @@ class NormalCheckpointManager:
                 tprint(f"检查点已保存到 {checkpoint_path}，距上次保存: {time_since_last_save:.2f}秒")
                 self.last_save_time = current_time
                 tprint(f"删除旧的checkpoint")
-                if os.path.exists(os.path.join(self.checkpoint_dir, f"checkpoint_epoch_{epoch}.pt")):
-                    os.remove(os.path.join(self.checkpoint_dir, f"checkpoint_epoch_{epoch}.pt"))
+                if os.path.exists(os.path.join(self.checkpoint_dir, f"checkpoint_epoch_{self.last_save_epoch}.pt")):
+                    os.remove(os.path.join(self.checkpoint_dir, f"checkpoint_epoch_{self.last_save_epoch}.pt"))
+                self.last_save_epoch = epoch + 1
             except Exception as e:
                 tprint(f"保存checkpoint时出错: {str(e)}")
                 exit()
@@ -173,6 +176,7 @@ class DCPCheckpointManager:
                     checkpoint_id=latest_checkpoint,
                 )
                 tprint(f"成功加载checkpoint，将从epoch {start_epoch} 继续训练")
+                self.last_save_epoch = start_epoch
             except Exception as e:
                 tprint(f"使用dcp加载失败: {str(e)}, 退出")
                 exit()
@@ -190,15 +194,16 @@ class DCPCheckpointManager:
         if time_since_last_save > self.save_interval_sec:  # 如果超过n秒
             tprint(f"start save dcp checkpoint")
             try:
-                checkpoint_id = os.path.join(self.checkpoint_dir, f"checkpoints_epoch_{epoch}")
+                checkpoint_id = os.path.join(self.checkpoint_dir, f"checkpoints_epoch_{epoch+1}")
                 state_dict = { "app": AppState(model, optimizer) }
                 dcp.save(state_dict, checkpoint_id=checkpoint_id)
                 tprint(f"检查点已保存到 {checkpoint_id}，距上次保存: {time_since_last_save:.2f}秒")
                 self.last_save_time = current_time
                 tprint(f"删除旧的checkpoint")
-                old_checkpoint = os.path.join(self.checkpoint_dir, f"checkpoints_epoch_{epoch}")
+                old_checkpoint = os.path.join(self.checkpoint_dir, f"checkpoints_epoch_{self.last_save_epoch}")
                 if os.path.exists(old_checkpoint):
                     shutil.rmtree(old_checkpoint)
+                self.last_save_epoch = epoch + 1
             except Exception as e:
                 tprint(f"保存checkpoint时出错: {str(e)}")
                 exit()
