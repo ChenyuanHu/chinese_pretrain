@@ -569,40 +569,6 @@ class CheckpointManager:
         latest_checkpoint = max(checkpoint_files, key=os.path.getmtime)
         return latest_checkpoint
 
-    # 兼容DP/DDP的模型dict，他们的key会多一个module.前缀
-    def _load_model_state_dict(self, model, model_state_dict):
-        # 如果是FSDP模型，使用FSDP特定的加载方法
-        if isinstance(model, torch.distributed.fsdp.FullyShardedDataParallel):
-            with torch.distributed.fsdp.FullStateDictConfig(offload_to_cpu=True, rank0_only=True):
-                with torch.distributed.fsdp.state_dict_type(model, torch.distributed.fsdp.StateDictType.FULL_STATE_DICT):
-                    return model_state_dict
-        
-        # 检查是否存在 "module." 前缀的键名
-        has_module_prefix = any(k.startswith("module.") for k in model_state_dict.keys())
-        
-        # 如果当前模型是 DataParallel/DDP 但权重没有前缀，添加前缀
-        if isinstance(model, (torch.nn.DataParallel, torch.nn.parallel.DistributedDataParallel)):
-            if not has_module_prefix:
-                return {"module." + k: v for k, v in model_state_dict.items()}
-        # 如果当前模型是单机但权重有前缀，去除前缀
-        else:
-            if has_module_prefix:
-                return {k.replace("module.", ""): v for k, v in model_state_dict.items()}
-        
-        return model_state_dict
-
-    def _get_model_state_dict_to_save(self, model):
-        # 如果是FSDP模型，使用FSDP特定的状态字典方法
-        if isinstance(model, torch.distributed.fsdp.FullyShardedDataParallel):
-            with torch.distributed.fsdp.FullStateDictConfig(offload_to_cpu=True, rank0_only=True):
-                with torch.distributed.fsdp.state_dict_type(model, torch.distributed.fsdp.StateDictType.FULL_STATE_DICT):
-                    return model.state_dict()
-        # 如果是其他类型的并行模型
-        elif isinstance(model, (torch.nn.DataParallel, torch.nn.parallel.DistributedDataParallel)):
-            return model.module.state_dict()
-        else:
-            return model.state_dict()
-
     def try_load_checkpoint(self, model, optimizer):
         # 添加ModuleConfig到安全globals列表中
         torch.serialization.add_safe_globals([ModuleConfig])
@@ -619,8 +585,9 @@ class CheckpointManager:
             try:
                 state_dict = torch.load(latest_checkpoint, weights_only=True, map_location=map_location)
                 # 首先尝试使用weights_only=True加载
-                model.load_state_dict(self._load_model_state_dict(model, state_dict['model_state_dict']))
-                optimizer.load_state_dict(state_dict['optimizer_state_dict'])
+                model.load_state_dict(state_dict['model_state_dict'])
+                # optimizer.load_state_dict(state_dict['optimizer_state_dict'])
+                tprint("跳过optimizer加载")
                 start_epoch = state_dict.get('epoch', 0)
                 tprint(f"成功加载checkpoint，将从epoch {start_epoch} 继续训练")
             except Exception as e:
@@ -641,8 +608,8 @@ class CheckpointManager:
                 checkpoint_path = os.path.join(self.checkpoint_dir, f"checkpoint_epoch_{epoch+1}.pt")
                 save_dict = {
                     'epoch': epoch + 1,
-                    'model_state_dict': self._get_model_state_dict_to_save(model),
-                    'optimizer_state_dict': optimizer.state_dict(),
+                    'model_state_dict': model.state_dict(),
+                    # 'optimizer_state_dict': optimizer.state_dict(),  FSDP先不保存优化器，简单处理，后续改成torch.distributed.checkpoint
                     'train_loss': avg_train_loss,
                     'val_loss': avg_eval_loss,
                 }
