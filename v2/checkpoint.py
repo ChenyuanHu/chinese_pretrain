@@ -64,7 +64,7 @@ class NormalCheckpointManager:
                 tprint(f"使用optimizer加载失败: {str(e)[:50]}, 跳过optimizer加载")
 
         else:
-            tprint("未找到checkpoint，将从头开始训练")
+            tprint("NormalCheckpointManager: 未找到checkpoint")
 
         return start_epoch
 
@@ -109,21 +109,21 @@ class AppState(Stateful):
         self.optimizer = optimizer
 
     def state_dict(self):
-        # this line automatically manages FSDP FQN's, as well as sets the default state dict type to FSDP.SHARDED_STATE_DICT
-        model_state_dict, optimizer_state_dict = get_state_dict(self.model, self.optimizer)
+        # 获取模型和优化器的状态字典
+        model_state_dict = self.model.state_dict()
+        optimizer_state_dict = None
+        if self.optimizer is not None:
+            optimizer_state_dict = self.optimizer.state_dict()
         return {
             "model_state_dict": model_state_dict,
             "optimizer_state_dict": optimizer_state_dict
         }
 
     def load_state_dict(self, state_dict):
-        # sets our state dicts on the model and optimizer, now that we've loaded
-        set_state_dict(
-            self.model,
-            self.optimizer,
-            model_state_dict=state_dict["model_state_dict"],
-            optim_state_dict=state_dict["optimizer_state_dict"]
-        )
+        # 加载模型和优化器的状态字典
+        self.model.load_state_dict(state_dict["model_state_dict"])
+        if self.optimizer is not None and state_dict["optimizer_state_dict"] is not None:
+            self.optimizer.load_state_dict(state_dict["optimizer_state_dict"])
 
 
 class DCPCheckpointManager:
@@ -131,6 +131,7 @@ class DCPCheckpointManager:
         self.env = env
         # 记录上次保存模型的时间
         self.last_save_time = time.time()
+        self.last_save_epoch = 0
         self.checkpoint_dir = "checkpoints_dcp"
         self.save_interval_sec = save_interval_sec
         # 创建检查点目录（如果不存在）
@@ -182,7 +183,7 @@ class DCPCheckpointManager:
                 exit()
 
         else:
-            tprint("未找到checkpoint，将从头开始训练")
+            tprint("DCPCheckpointManager: 未找到checkpoint")
 
         return start_epoch
         
@@ -199,13 +200,13 @@ class DCPCheckpointManager:
                 dcp.save(state_dict, checkpoint_id=checkpoint_id)
                 tprint(f"检查点已保存到 {checkpoint_id}，距上次保存: {time_since_last_save:.2f}秒")
                 self.last_save_time = current_time
-                tprint(f"删除旧的checkpoint")
                 old_checkpoint = os.path.join(self.checkpoint_dir, f"checkpoints_epoch_{self.last_save_epoch}")
-                if os.path.exists(old_checkpoint):
+                if os.path.exists(old_checkpoint) and self.env.local_rank == 0: # 同一台主机，只有主进程才能删除checkpoint
+                    tprint(f"删除旧的checkpoint. {old_checkpoint}")
                     shutil.rmtree(old_checkpoint)
                 self.last_save_epoch = epoch + 1
             except Exception as e:
-                tprint(f"保存checkpoint时出错: {str(e)}")
+                tprint(f"保存checkpoint时出错: {str(e)}, epoch: {epoch+1}")
                 exit()
 
 
@@ -213,6 +214,7 @@ class CheckpointManager:
     def __init__(self, env, save_interval_sec):
         self.normal_manager = NormalCheckpointManager(env, save_interval_sec)
         self.dcp_manager = DCPCheckpointManager(env, save_interval_sec)
+        self.env = env
 
     def try_load_checkpoint(self, model, optimizer):
         start_epoch = self.dcp_manager.try_load_checkpoint(model, optimizer)
@@ -221,4 +223,7 @@ class CheckpointManager:
         return start_epoch
 
     def check_save_checkpoint(self, model, optimizer, epoch, avg_train_loss, avg_eval_loss):
+        save_normal = False
+        if self.env.master_process and save_normal:
+            self.normal_manager.check_save_checkpoint(model, optimizer, epoch, avg_train_loss, avg_eval_loss)
         self.dcp_manager.check_save_checkpoint(model, optimizer, epoch)

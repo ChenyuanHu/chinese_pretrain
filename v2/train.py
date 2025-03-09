@@ -15,7 +15,7 @@ from log import tprint
 class Trainer:
     def __init__(self, train_config, module_config, demo_config):
         self.env = TorchrunEnv()
-        tprint(f"DDP环境初始化完成")
+        tprint(f"torchrun环境初始化完成")
         self.env.model_init(MyModule(module_config))
         self.model = self.env.get_model()
         tprint(f"模型初始化完成")
@@ -125,8 +125,7 @@ class Trainer:
             tprint(f"训练集群处理速度: {global_tokens_per_sec:.2f} tokens/s")
             
             # 检查是否需要保存检查点
-            if self.env.master_process:
-                self.checkpoint_manager.check_save_checkpoint(self.model, self.optimizer, epoch, global_avg_train_loss, global_eval_avg_loss)
+            self.checkpoint_manager.check_save_checkpoint(self.model, self.optimizer, epoch, global_avg_train_loss, global_eval_avg_loss)
 
             self.env.barrier()
 

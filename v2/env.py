@@ -31,7 +31,7 @@ class TorchrunEnv:
             torch.cuda.set_device(self.device)
             self.device_type = "cuda"
             self.master_process = self.rank == 0 # this process will do logging, checkpointing etc.
-            tprint(f"ddp rank: {self.rank}, local rank: {self.local_rank}, world size: {self.world_size}")
+            tprint(f"torchrun rank: {self.rank}, local rank: {self.local_rank}, world size: {self.world_size}")
 
     def model_init(self, model):
         model.to(self.device)
