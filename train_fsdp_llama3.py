@@ -366,7 +366,10 @@ class TrainDataLoader:
 
         tprint(f"加载FineWebEduChinese数据集，只下载和处理4-5评分范围的高质量内容. 第{ddp_env.ddp_rank}个进程，从{offset_start}%到{offset_end}%")
         raw_dataset = load_dataset("opencsg/Fineweb-Edu-Chinese-V2.1", data_dir = "4_5", split=f"train[{offset_start}%:{offset_end}%]")
-        dataset_batch = DataLoader(raw_dataset, batch_size=batch_size, shuffle=True)
+
+        generator = torch.Generator()
+        generator.manual_seed(42 + int(time.time()))  # 每次重启时使用不同的种子，避免断点续训时数据重复
+        dataset_batch = DataLoader(raw_dataset, batch_size=batch_size, shuffle=True, generator=generator)
         return iter(dataset_batch)
     
     def next_fineweb_edu_chinese_v2_1(self):
@@ -378,7 +381,10 @@ class TrainDataLoader:
     def load_chinese_deepseek_r1_distill_data_110k_sft(batch_size):
         tprint(f"加载ChineseDeepSeekR1DistillData数据集")
         raw_dataset = load_dataset("Congliu/Chinese-DeepSeek-R1-Distill-data-110k-SFT", split="train")
-        dataset_batch = DataLoader(raw_dataset, batch_size=batch_size, shuffle=True)
+
+        generator = torch.Generator()
+        generator.manual_seed(42 + int(time.time()))  # 每次重启时使用不同的种子，避免断点续训时数据重复
+        dataset_batch = DataLoader(raw_dataset, batch_size=batch_size, shuffle=True, generator=generator)
         return iter(dataset_batch)
     
     def next_chinese_deepseek_r1_distill_data_110k_sft(self):
