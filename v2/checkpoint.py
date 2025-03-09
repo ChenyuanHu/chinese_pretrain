@@ -144,7 +144,7 @@ class DCPCheckpointManager:
                          if os.path.isdir(os.path.join(self.checkpoint_dir, d))]
         
         if not checkpoint_dirs:
-            return None
+            return None, 0
             
         # 提取目录名中的epoch数字
         epoch_nums = []
@@ -156,7 +156,7 @@ class DCPCheckpointManager:
                 continue
                 
         if not epoch_nums:
-            return None
+            return None, 0
             
         # 找到最大的epoch数字
         latest_epoch = max(epoch_nums)
