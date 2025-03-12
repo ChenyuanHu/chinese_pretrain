@@ -107,5 +107,12 @@ class TrainDataLoader:
 
 if __name__ == "__main__":
     # 用来单独预缓存数据集
-    dataloader_1 = TrainDataLoader(None, 1, 1024, tokenizer=None, use_data_percent=100, is_sft=False)
-    dataloader_2 = TrainDataLoader(None, 1, 1024, tokenizer=None, use_data_percent=100, is_sft=True)
+    class MockEnv:
+        def __init__(self):
+            self.rank = 0
+            self.world_size = 1
+
+    env = MockEnv()
+    dataloader_1 = TrainDataLoader(env, 1, 1024, tokenizer=None, use_data_percent=100, is_sft=False)
+    dataloader_2 = TrainDataLoader(env, 1, 1024, tokenizer=None, use_data_percent=100, is_sft=True)
+
