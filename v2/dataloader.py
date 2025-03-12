@@ -103,3 +103,11 @@ class TrainDataLoader:
                 tprint(f"处理批次时出错: {str(e)}，跳过此批次")
                 time.sleep(120)
                 continue
+
+
+if __name__ == "__main__":
+    # 用来单独预缓存数据集
+    dataloader = TrainDataLoader(None, 1, 1024, tokenizer=None, use_data_percent=100, is_sft=False)
+    xs, ys = dataloader.next("cpu")
+    print(len(xs))
+    print(len(ys))
