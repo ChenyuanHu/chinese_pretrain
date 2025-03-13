@@ -2,7 +2,7 @@
 class TrainConfig:
     is_sft = False
     use_data_percent = 80
-    batch_size = 4
+    batch_size = 6
     num_epochs = 10000
     steps_per_epoch = 2000  # 每个epoch训练多少批次
     gradient_accumulation_steps = 1  # 梯度累积步数
