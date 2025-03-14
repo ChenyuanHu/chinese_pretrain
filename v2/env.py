@@ -2,6 +2,8 @@ import os
 import torch
 import torch.distributed as dist
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from torch.distributed.fsdp import ShardingStrategy, MixedPrecision
+from torch.distributed.device_mesh import init_device_mesh
 from log import tprint
 
 class TorchrunEnv:
@@ -13,6 +15,8 @@ class TorchrunEnv:
             self.rank = 0
             self.local_rank = 0
             self.world_size = 1
+            self.local_world_size = 1
+            self.num_nodes = 1
             self.device = "cpu"
             if torch.cuda.is_available():
                 self.device = "cuda"
@@ -27,6 +31,8 @@ class TorchrunEnv:
             self.rank = int(os.environ['RANK'])
             self.local_rank = int(os.environ['LOCAL_RANK'])
             self.world_size = int(os.environ['WORLD_SIZE'])
+            self.local_world_size = int(os.environ['LOCAL_WORLD_SIZE'])
+            self.num_nodes = self.world_size // self.local_world_size
             self.device = f'cuda:{self.local_rank}'
             torch.cuda.set_device(self.device)
             self.device_type = "cuda"
@@ -36,7 +42,22 @@ class TorchrunEnv:
     def model_init(self, model):
         model.to(self.device)
         if self.enabled:
-            self.model = FSDP(model)
+            device_mesh = init_device_mesh(
+                "cuda", 
+                mesh_shape=(self.num_nodes, self.local_world_size),  # 单维度网格
+                mesh_dim_names=("node", "gpu")          # 数据并行维度
+            )
+            self.model = FSDP(model,
+                              sharding_strategy=ShardingStrategy.HYBRID_SHARD,
+                              mixed_precision=MixedPrecision(
+                                  param_dtype=torch.bfloat16,
+                                  reduce_dtype=torch.bfloat16,
+                                  buffer_dtype=torch.bfloat16,
+                              ),
+                              device_mesh=device_mesh,
+                              device_id=self.local_rank,
+                              use_orig_params=True,  # 关键改进：支持非连续参数
+                              limit_all_gathers=True)
         else:
             self.model = model
 
