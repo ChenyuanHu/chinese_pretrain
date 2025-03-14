@@ -2,6 +2,7 @@ import torch
 import math
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.attention import SDPBackend, sdpa_kernel
 from torch.utils.checkpoint import checkpoint
 from rope import RoPE
 
@@ -58,7 +59,8 @@ class CausalSelfAttention(nn.Module):
         FLASH = True
         if FLASH:
             # flashattention
-            y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+            with sdpa_kernel(SDPBackend.FLASH_ATTENTION):
+                y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
         else:
             # manual implementation of attention
             # this materializes the large (T,T) matrix for all the queries and keys
