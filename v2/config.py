@@ -24,6 +24,7 @@ class ModuleConfig:
     # RoPE
     rope_theta: float = 500000.0
     use_scaled_rope: bool = True
+    use_block_checkpoint: bool = False
 
 class DemoConfig:
     # 生成不同提示的文本
