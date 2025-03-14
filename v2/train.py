@@ -41,6 +41,7 @@ class Trainer:
         assert self.module_config.dtype in {"float32", "float16", "bfloat16"}, f"dtype must be float32, float16 or bfloat16"
         ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[self.module_config.dtype]
         self.amp = torch.amp.autocast(device_type=self.env.device_type, dtype=ptdtype)
+        self.amp_scaler = torch.cuda.amp.GradScaler(device=self.env.device)
 
         # 计算并打印模型参数量
         total_params = sum(p.numel() for p in self.model.parameters())
@@ -75,7 +76,7 @@ class Trainer:
                         loss = loss.mean()  # 添加这行来确保损失是标量
                         
                         # 缩放损失以适应梯度累积
-                        scaled_loss = loss / self.train_config.gradient_accumulation_steps
+                        scaled_loss = self.amp_scaler.scale(loss / self.train_config.gradient_accumulation_steps)
 
                     scaled_loss.backward()
                     
@@ -83,9 +84,10 @@ class Trainer:
                     total_train_loss += loss.item() * y.numel()
                     total_train_tokens += y.numel()
                     
-                    # 梯度累积：每 gradient_accumulation_steps 步进行一次更新
+                    # 梯度累积：每 gradient_accumulation_steps 步进行一次更新，或者最后一个step
                     if (step + 1) % self.train_config.gradient_accumulation_steps == 0 or (step + 1 == self.train_config.steps_per_epoch):
-                        self.optimizer.step()
+                        self.amp_scaler.step(self.optimizer)
+                        self.amp_scaler.update()
                         self.optimizer.zero_grad()
                     
                     current_time = time.time()
