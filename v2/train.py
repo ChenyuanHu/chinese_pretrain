@@ -41,7 +41,7 @@ class Trainer:
         assert self.module_config.dtype in {"float32", "float16", "bfloat16"}, f"dtype must be float32, float16 or bfloat16"
         ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[self.module_config.dtype]
         self.amp = torch.amp.autocast(device_type=self.env.device_type, dtype=ptdtype)
-        self.amp_scaler = torch.cuda.amp.GradScaler(device=self.env.device)
+        self.amp_scaler = torch.amp.GradScaler(device=self.env.device)
 
         # 计算并打印模型参数量
         total_params = sum(p.numel() for p in self.model.parameters())
