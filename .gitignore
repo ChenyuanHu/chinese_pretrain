@@ -6,3 +6,4 @@ __pycache__
 *.pth.gz
 *.pt.gz
 logs
+.venv
