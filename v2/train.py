@@ -21,13 +21,12 @@ class Trainer:
         tprint(f"模型初始化完成")
         self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4)
 
-        self.data_loader = TrainDataLoader(self.env, train_config.batch_size, module_config.block_size,
-                                                       tokenizer=None, use_data_percent=train_config.use_data_percent,
-                                                       is_sft=train_config.is_sft)
-        tprint(f"数据加载器初始化完成")
         self.tokenizer = Tokenizer()
         tprint(f"分词器初始化完成")
-        self.data_loader.set_tokenizer(self.tokenizer) # huggingface tokenizer要求在DataLoader后初始化
+        self.data_loader = TrainDataLoader(self.env, train_config.batch_size, module_config.block_size,
+                                                       tokenizer=self.tokenizer, use_data_percent=train_config.use_data_percent,
+                                                       is_sft=train_config.is_sft)
+        tprint(f"数据加载器初始化完成")
         self.evaluate_runner = EvaluateRunner(self.data_loader, train_config.batch_size)
         tprint(f"评估器初始化完成")
 
