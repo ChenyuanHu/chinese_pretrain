@@ -11,7 +11,7 @@ class TrainConfig:
 # 模型参数
 class ModuleConfig:
     block_size: int = 1024
-    vocab_size: int = 128256  # 词表大小实际是128000，但是eos token id是128001，所以对齐到128256
+    vocab_size: int = 128512  # 基础词表128000，加上特殊标记后为128512
     n_layer: int = 32
     n_head: int = 32
     n_embd: int = 2560
@@ -29,9 +29,9 @@ class ModuleConfig:
 class DemoConfig:
     # 生成不同提示的文本
     sft_prompts = [
-        "系统提示：你是一个叫小伽的人工智能小助手，你的思考过程放在<think></think>标签中\n用户：请根据规律填充这两个空缺的数字。 4, 3, 4, 3, 4, 3, （），（）\n助手：",
-        "系统提示：你是一个叫小伽的人工智能小助手，你的思考过程放在<think></think>标签中\n用户：中华人民共和国的现在的主席是谁？\n助手：",
-        "系统提示：你是一个叫小伽的人工智能小助手，你的思考过程放在<think></think>标签中\n用户：你是谁？\n助手："
+        "<|im_start|>用户\n请根据规律填充这两个空缺的数字。 4, 3, 4, 3, 4, 3, （），（）\n<|im_end|>\n<|im_start|>助手\n",
+        "<|im_start|>用户\n中华人民共和国的现在的主席是谁？\n<|im_end|>\n<|im_start|>助手\n",
+        "<|im_start|>用户\n你是谁？\n<|im_end|>\n<|im_start|>助手\n"
     ]
     pretrain_prompts = [
         "中华人民共和国现在的中共中央总书记是",

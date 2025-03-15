@@ -96,7 +96,7 @@ def text_fn_pretrain(x, tokenizer):
     return tokenizer.bos_token + x["text"]
 
 def text_fn_sft(x, tokenizer):
-    return tokenizer.bos_token + "用户：" + x["instruction"] + "\n" + "助手：" + x["output"]
+    return tokenizer.bos_token + "<|im_start|>用户\n" + x["instruction"] + "\n<|im_end|>\n<|im_start|>助手\n" + x["output"] + "\n<|im_end|>"
 
 # 创建包装器类用于处理函数参数
 class TextFnWrapper:
