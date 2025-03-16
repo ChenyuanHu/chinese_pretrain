@@ -14,6 +14,7 @@ class CausalSelfAttention(nn.Module):
         self.n_head = config.n_head
         self.n_embd = config.n_embd
         self.n_kv_head = config.n_kv_head
+        self.flash_attn = config.flash_attn
         self.hd = self.n_embd // self.n_head
         self.n_rep = self.n_head // self.n_kv_head
 
@@ -56,7 +57,7 @@ class CausalSelfAttention(nn.Module):
 
         q, k, v = map(lambda t: t.transpose(1, 2), (q, k, v))  # (B, NH, T, HD)
 
-        FLASH = True
+        FLASH = self.flash_attn
         if FLASH:
             # flashattention
             with sdpa_kernel(SDPBackend.FLASH_ATTENTION):

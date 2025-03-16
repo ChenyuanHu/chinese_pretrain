@@ -16,6 +16,8 @@ class ModuleConfig:
     n_head: int = 32
     n_embd: int = 2560
     n_kv_head: int = 8
+    # flash attention
+    flash_attn: bool = True
     # amp
     dtype = "bfloat16"
     # MLP
