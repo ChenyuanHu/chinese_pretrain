@@ -4,7 +4,7 @@ import json
 import os
 import sys
 from tokenizer import Tokenizer
-from dataloader import load_dataset_with_cache, MockEnv, TrainDataLoader, text_fn_pretrain, text_fn_sft, TextFnWrapper
+from dataloader import load_dataset_with_cache, MockEnv, TrainDataLoader
 
 app = Flask(__name__)
 
