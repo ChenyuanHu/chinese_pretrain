@@ -160,6 +160,7 @@ class MockEnv:
     def __init__(self):
         self.rank = 0
         self.world_size = 1
+        self.device = "cpu"
 
 if __name__ == "__main__":
     # 用来单独预缓存数据集
