@@ -45,7 +45,7 @@ class Trainer:
             growth_factor=2.0,
             backoff_factor=0.5,
             growth_interval=2000,
-            enabled=(self.env.device_type != 'cpu')
+            enabled=(self.env.device_type != 'cpu' and self.env.device_type != 'mps')
         )
 
         # 计算并打印模型参数量
