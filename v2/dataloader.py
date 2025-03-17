@@ -2,8 +2,58 @@ from torch.utils.data import DataLoader
 import torch
 import time
 from log import tprint
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
+import os
+import hashlib
 from tokenizer import Tokenizer
+
+USE_CACHE = False
+
+def load_dataset_with_cache(path, data_dir=None, split=None, cache_dir="./dataset_cache"):
+    """
+    加载数据集并使用本地缓存，避免重复下载。
+    
+    参数:
+        path: 数据集路径
+        data_dir: 数据集的子目录
+        split: 要加载的数据集分片
+        cache_dir: 本地缓存目录
+    
+    返回:
+        加载的数据集对象
+    """
+
+    if USE_CACHE:
+        return load_dataset(path, data_dir=data_dir, split=split)
+
+    # 创建缓存目录
+    os.makedirs(cache_dir, exist_ok=True)
+    
+    # 生成缓存文件名
+    cache_key = f"{path}_{data_dir}_{split}"
+    cache_key_hash = hashlib.md5(cache_key.encode()).hexdigest()
+    cache_path = os.path.join(cache_dir, cache_key_hash)
+    
+    # 检查缓存是否存在
+    if os.path.exists(cache_path):
+        tprint(f"从本地缓存加载数据集: {cache_path}")
+        try:
+            return load_from_disk(cache_path)
+        except Exception as e:
+            tprint(f"从缓存加载失败: {str(e)}，将重新下载")
+    
+    # 缓存不存在或加载失败，从原始源加载
+    tprint(f"从原始源加载数据集: {path}")
+    dataset = load_dataset(path, data_dir=data_dir, split=split)
+    
+    # 保存到缓存
+    try:
+        tprint(f"保存数据集到本地缓存: {cache_path}")
+        dataset.save_to_disk(cache_path)
+    except Exception as e:
+        tprint(f"保存到缓存失败: {str(e)}")
+    
+    return dataset
 
 
 class DataLoaderProcess:
@@ -54,7 +104,12 @@ class DataLoaderProcess:
         assert offset_end <= 100, f"offset_end({offset_end}) must be less than 100"
 
         tprint(f"加载数据集{self.path}. 第{self.env.rank}个进程，从{offset_start}%到{offset_end}%")
-        raw_dataset = load_dataset(self.path, data_dir=self.data_dir, split=f"train[{offset_start}%:{offset_end}%]")
+        # 使用缓存版本的加载函数
+        raw_dataset = load_dataset_with_cache(
+            self.path, 
+            data_dir=self.data_dir, 
+            split=f"train[{offset_start}%:{offset_end}%]"
+        )
 
         if self.env.device == "mps":
             num_workers = 0
