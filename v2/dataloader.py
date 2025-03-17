@@ -56,13 +56,22 @@ class DataLoaderProcess:
         tprint(f"加载数据集{self.path}. 第{self.env.rank}个进程，从{offset_start}%到{offset_end}%")
         raw_dataset = load_dataset(self.path, data_dir=self.data_dir, split=f"train[{offset_start}%:{offset_end}%]")
 
+        if self.env.device == "mps":
+            num_workers = 0
+            prefetch_factor = None
+            persistent_workers = False
+        else:
+            num_workers = 1
+            prefetch_factor = 4
+            persistent_workers = True
+
         dataset_batch = DataLoader(raw_dataset,
             batch_size=self.batch_size,
             shuffle=self.shuffle,
             generator=self.generator,
-            num_workers=1,
-            prefetch_factor=4,
-            persistent_workers=True,
+            num_workers=num_workers,
+            prefetch_factor=prefetch_factor,
+            persistent_workers=persistent_workers,
             pin_memory=False,
             drop_last=False,
             collate_fn=self.collate_fn
