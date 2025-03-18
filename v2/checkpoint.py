@@ -211,10 +211,12 @@ class DCPCheckpointManager:
 
 
 class CheckpointManager:
-    def __init__(self, env, save_interval_sec):
-        self.normal_manager = NormalCheckpointManager(env, save_interval_sec)
-        self.dcp_manager = DCPCheckpointManager(env, save_interval_sec)
+    def __init__(self, env, train_config):
+        self.normal_manager = NormalCheckpointManager(env, train_config.save_interval_sec)
+        self.dcp_manager = DCPCheckpointManager(env, train_config.save_interval_sec)
         self.env = env
+        self.save_dcp_checkpoint = train_config.save_dcp_checkpoint
+        self.save_normal_checkpoint = train_config.save_normal_checkpoint
 
     def try_load_checkpoint(self, model, optimizer):
         start_epoch = self.dcp_manager.try_load_checkpoint(model, optimizer)
@@ -223,7 +225,8 @@ class CheckpointManager:
         return start_epoch
 
     def check_save_checkpoint(self, model, optimizer, epoch, avg_train_loss, avg_eval_loss):
-        save_normal = False
-        if self.env.master_process and save_normal:
+        if self.env.master_process and self.save_normal_checkpoint:
             self.normal_manager.check_save_checkpoint(model, optimizer, epoch, avg_train_loss, avg_eval_loss)
-        self.dcp_manager.check_save_checkpoint(model, optimizer, epoch)
+
+        if self.save_dcp_checkpoint:
+            self.dcp_manager.check_save_checkpoint(model, optimizer, epoch)

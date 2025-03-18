@@ -9,11 +9,11 @@ from dataloader import TrainDataLoader
 from generate import TextGenerator
 from checkpoint import CheckpointManager
 from eval import EvaluateRunner
-from config import TrainConfig, ModuleConfig, DemoConfig
+from config import TrainConfig, ModuleConfig, TrainDataConfig
 from log import tprint
 
 class Trainer:
-    def __init__(self, train_config, module_config, demo_config):
+    def __init__(self, train_config, module_config, train_data_config):
         self.env = TorchrunEnv()
         tprint(f"torchrun环境初始化完成")
         self.env.model_init(MyModule(module_config))
@@ -23,16 +23,14 @@ class Trainer:
 
         self.tokenizer = Tokenizer()
         tprint(f"分词器初始化完成")
-        self.data_loader = TrainDataLoader(self.env, train_config.batch_size, module_config.block_size,
-                                                       tokenizer=self.tokenizer, use_data_percent=train_config.use_data_percent,
-                                                       is_sft=train_config.is_sft)
+        self.data_loader = TrainDataLoader(self.env.world_size, self.env.rank, self.env.local_rank, train_config.batch_size, module_config.block_size, self.tokenizer)
         tprint(f"数据加载器初始化完成")
         self.evaluate_runner = EvaluateRunner(self.data_loader, train_config.batch_size)
         tprint(f"评估器初始化完成")
 
-        self.text_generator = TextGenerator(self.model, module_config.block_size, self.tokenizer, demo_config, device=self.env.device)
+        self.text_generator = TextGenerator(self.model, module_config.block_size, self.tokenizer, train_data_config, device=self.env.device)
         tprint(f"文本生成器初始化完成")
-        self.checkpoint_manager = CheckpointManager(self.env, train_config.save_interval_sec)
+        self.checkpoint_manager = CheckpointManager(self.env, train_config)
         tprint(f"检查点管理器初始化完成")
         self.train_config = train_config
         self.module_config = module_config
@@ -45,7 +43,7 @@ class Trainer:
             growth_factor=2.0,
             backoff_factor=0.5,
             growth_interval=2000,
-            enabled=(self.env.device_type != 'cpu')
+            enabled=(self.env.device_type != 'cpu' and self.env.device_type != 'mps')
         )
 
         # 计算并打印模型参数量
@@ -81,7 +79,9 @@ class Trainer:
             for step in range(self.train_config.steps_per_epoch):
                 try:
                     # 获取下一批数据
-                    x, y = self.data_loader.next(self.env.device)
+                    x, y, _ = self.data_loader.next()
+                    x = torch.tensor(x, dtype=torch.long, device=self.env.device)
+                    y = torch.tensor(y, dtype=torch.long, device=self.env.device)
                     
                     # 前向传播
                     with self.amp:
@@ -163,8 +163,7 @@ if __name__ == "__main__":
 
     train_config = TrainConfig()
     module_config = ModuleConfig()
-    demo_config = DemoConfig()
-    demo_config.prompts = demo_config.sft_prompts if train_config.is_sft else demo_config.pretrain_prompts
-    trainer = Trainer(train_config, module_config, demo_config)
+    train_data_config = TrainDataConfig()
+    trainer = Trainer(train_config, module_config, train_data_config)
     trainer.train()
     trainer.cleanup()

@@ -10,3 +10,5 @@ logs
 training_metrics.png
 dataset_cache
 templates
+checkpoints
+checkpoints_dcp

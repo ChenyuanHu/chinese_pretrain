@@ -4,14 +4,14 @@ import random
 from log import tprint
 
 class TextGenerator:
-    def __init__(self, model, block_size, tokenizer, demo_config, device="cpu"):
+    def __init__(self, model, block_size, tokenizer, train_data_config, device="cpu"):
         self.model = model
         self.block_size = block_size
         self.tokenizer = tokenizer
-        self.prompts = demo_config.prompts
-        self.max_tokens = demo_config.max_tokens
-        self.temperature = demo_config.temperature
-        self.top_k = demo_config.top_k
+        self.prompts = train_data_config.data.case_prompts
+        self.max_tokens = train_data_config.max_tokens
+        self.temperature = train_data_config.temperature
+        self.top_k = train_data_config.top_k
         self.device = device
         
     # 定义文本生成函数
