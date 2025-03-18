@@ -8,16 +8,16 @@ import uuid
 import glob
 import time
 
+# 创建包装器类用于处理函数参数
+class TextFnWrapper:
+    def __init__(self, fn):
+        self.fn = fn
+        
+    def __call__(self, x):
+        return self.fn(x)
+
 class DataMapper:
     def __init__(self, path, data_dir, split, tokenizer, text_fn, cache_dir="./dataset_cache", num_workers=None):
-        # 创建包装器类用于处理函数参数
-        class TextFnWrapper:
-            def __init__(self, fn):
-                self.fn = fn
-                
-            def __call__(self, x):
-                return self.fn(x)
-
         self.path = path
         self.data_dir = data_dir
         self.split = split
