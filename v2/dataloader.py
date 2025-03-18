@@ -1,6 +1,5 @@
 from datasets import load_dataset
 import os
-import struct
 import mmap
 from log import tprint
 import multiprocessing as mp
