@@ -125,10 +125,9 @@ class DataMapper:
         
         tprint(f"数据集预处理完毕，已保存到: {self.file_path}")
         # 创建完成标记文件
-        done_file = f"{self.file_path}.done"
-        with open(done_file, "w") as f:
+        with open(self.done_file, "w") as f:
             f.write("1")
-        tprint(f"创建完成标记文件: {done_file}")
+        tprint(f"创建完成标记文件: {self.done_file}")
 
     def map_to_array(self):
         tprint(f"等待数据集预处理文件: {self.done_file}")
