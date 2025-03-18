@@ -3,3 +3,4 @@ transformers>=4.36.0
 tiktoken>=0.5.0
 torch>=2.0.0
 matplotlib==3.8.3 
+datasets>=3.3.0
