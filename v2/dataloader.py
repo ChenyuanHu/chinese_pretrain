@@ -68,13 +68,21 @@ class DataMapper:
                     last_log_time = current_time
                 
                 if len(token_buffer) >= buffer_size:
-                    packed_data = struct.pack(f"{len(token_buffer)}i", *token_buffer)
-                    f.write(packed_data)
+                    # 使用3字节存储每个token ID
+                    bytes_data = bytearray()
+                    for token in token_buffer:
+                        # 将token ID转换为3字节
+                        bytes_data.extend(token.to_bytes(3, byteorder='little'))
+                    f.write(bytes_data)
                     token_buffer = []
             
             if token_buffer:
-                packed_data = struct.pack(f"{len(token_buffer)}i", *token_buffer)
-                f.write(packed_data)
+                # 使用3字节存储每个token ID
+                bytes_data = bytearray()
+                for token in token_buffer:
+                    # 将token ID转换为3字节
+                    bytes_data.extend(token.to_bytes(3, byteorder='little'))
+                f.write(bytes_data)
                 
         # 完成时打印最终进度
         total_time = time.time() - start_time
@@ -161,7 +169,8 @@ class DataMapper:
             def __init__(self, filename):
                 self.filename = filename
                 self.file_size = os.path.getsize(filename)
-                self.num_tokens = self.file_size // 4  # 每个token是4字节
+                self.bytes_per_token = 3  # 每个token现在是3字节
+                self.num_tokens = self.file_size // self.bytes_per_token
                 
                 # 打开文件并创建内存映射
                 self.file = open(filename, 'rb')
@@ -180,10 +189,11 @@ class DataMapper:
                     raise IndexError("索引超出范围")
                 
                 # 计算在文件中的位置并读取token
-                pos = idx * 4
+                pos = idx * self.bytes_per_token
                 self.mm.seek(pos)
-                chunk = self.mm.read(4)
-                return struct.unpack('i', chunk)[0]
+                chunk = self.mm.read(self.bytes_per_token)
+                # 将3字节转换为整数
+                return int.from_bytes(chunk, byteorder='little')
                 
             def __len__(self):
                 return self.num_tokens
