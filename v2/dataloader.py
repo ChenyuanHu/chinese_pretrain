@@ -6,6 +6,7 @@ from log import tprint
 import multiprocessing as mp
 import uuid
 import glob
+import time
 
 class DataMapper:
     def __init__(self, path, data_dir, split, tokenizer, text_fn, cache_dir="./dataset_cache", num_workers=None):
@@ -26,6 +27,7 @@ class DataMapper:
 
         self.cache_dir = cache_dir
         self.file_path = os.path.join(self.cache_dir, path, f"{data_dir}_{split}.bin")
+        self.done_file = os.path.join(self.cache_dir, path, f"{data_dir}_{split}.done")
         self.num_workers = num_workers if num_workers is not None else max(1, mp.cpu_count() - 2)
 
     def _process_chunk(self, chunk_data, worker_id, temp_dir):
@@ -65,8 +67,8 @@ class DataMapper:
     def preprocess_to_file(self):
         # 确保目录存在
         os.makedirs(os.path.dirname(self.file_path), exist_ok=True)
-        if os.path.exists(self.file_path):
-            tprint(f"数据集预处理文件已存在: {self.file_path}")
+        if os.path.exists(self.done_file):
+            tprint(f"数据集预处理文件已存在: {self.done_file}")
             return
 
         tprint(f"正在加载数据集: {self.path}, {self.data_dir}, {self.split}...")
@@ -122,10 +124,21 @@ class DataMapper:
                 tprint(f"清理临时文件时出错: {e}")
         
         tprint(f"数据集预处理完毕，已保存到: {self.file_path}")
+        # 创建完成标记文件
+        done_file = f"{self.file_path}.done"
+        with open(done_file, "w") as f:
+            f.write("1")
+        tprint(f"创建完成标记文件: {done_file}")
 
     def map_to_array(self):
+        tprint(f"等待数据集预处理文件: {self.done_file}")
+        while not os.path.exists(self.done_file):
+            time.sleep(5)
+
         if not os.path.exists(self.file_path):
             raise FileNotFoundError(f"找不到预处理文件：{self.file_path}")
+
+        tprint(f"数据集预处理文件已存在: {self.file_path}")
             
         # 使用mmap将文件映射到内存
         class MemoryMappedTokens:
