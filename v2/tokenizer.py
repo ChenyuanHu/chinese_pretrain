@@ -23,6 +23,8 @@ class Tokenizer:
         tprint(f"添加后所有特殊标记ID: {self.raw_tokenizer.all_special_ids}")
         
         self.bos_token = self.raw_tokenizer.bos_token
+        self.bos_token_id = self.raw_tokenizer.bos_token_id
+        self.eos_token = self.raw_tokenizer.eos_token
         self.eos_token_id = self.raw_tokenizer.eos_token_id
         
         # 获取新添加的特殊标记的ID
@@ -30,6 +32,8 @@ class Tokenizer:
         self.im_end_id = self.raw_tokenizer.convert_tokens_to_ids('<|im_end|>')
         
         tprint(f"BOS token: {self.bos_token}")
+        tprint(f"BOS token ID: {self.bos_token_id}")
+        tprint(f"EOS token: {self.eos_token}")
         tprint(f"EOS token ID: {self.eos_token_id}")
         tprint(f"IM_START token ID: {self.im_start_id}")
         tprint(f"IM_END token ID: {self.im_end_id}")
