@@ -7,6 +7,13 @@ import multiprocessing as mp
 import uuid
 import glob
 import time
+import re
+
+def sanitize_path(path_str):
+    """清理路径字符串，使其对Windows和Unix系统都友好"""
+    # 替换Windows不允许的字符
+    sanitized = re.sub(r'[\\/*?:"<>|[\]%]', '_', str(path_str))
+    return sanitized
 
 # 创建包装器类用于处理函数参数
 class TextFnWrapper:
@@ -26,7 +33,11 @@ class DataMapper:
         self.text_fn = TextFnWrapper(text_fn)
 
         self.cache_dir = cache_dir
-        self.file_path = os.path.join(self.cache_dir, path, f"{data_dir}_{split}.bin")
+        # 确保文件路径是系统兼容的
+        safe_path = sanitize_path(path)
+        safe_data_dir = sanitize_path(data_dir)
+        safe_split = sanitize_path(split)
+        self.file_path = os.path.join(self.cache_dir, safe_path, f"{safe_data_dir}_{safe_split}.bin")
         self.num_workers = num_workers if num_workers is not None else max(1, mp.cpu_count() - 2)
 
     def _process_chunk(self, chunk_data, worker_id, temp_dir):
@@ -92,7 +103,7 @@ class DataMapper:
         tprint(f"数据集长度: {len(raw_dataset)}")
         
         # 创建临时目录
-        temp_dir = os.path.join(self.cache_dir, "temp", f"{self.path}_{self.data_dir}_{self.split}_{uuid.uuid4().hex}")
+        temp_dir = os.path.join(self.cache_dir, "temp", f"{uuid.uuid4()}")
         os.makedirs(temp_dir, exist_ok=True)
         
         # 计算每个进程处理的数据量
