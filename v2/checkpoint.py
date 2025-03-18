@@ -16,11 +16,9 @@ class NormalCheckpointManager:
         # 记录上次保存模型的时间
         self.last_save_time = time.time()
         self.last_save_epoch = 0
-        self.checkpoint_dir = "checkpoints"
+        self.checkpoint_dir = "experiments/checkpoints"
         self.save_interval_sec = save_interval_sec
-        # 创建检查点目录（如果不存在）
-        if not os.path.exists(self.checkpoint_dir):
-            os.makedirs(self.checkpoint_dir)
+        os.makedirs(self.checkpoint_dir, exist_ok=True)
         tprint(f"创建检查点目录: {self.checkpoint_dir}")
 
     # 检查是否存在checkpoint文件
@@ -132,11 +130,9 @@ class DCPCheckpointManager:
         # 记录上次保存模型的时间
         self.last_save_time = time.time()
         self.last_save_epoch = 0
-        self.checkpoint_dir = "checkpoints_dcp"
+        self.checkpoint_dir = "experiments/checkpoints_dcp"
         self.save_interval_sec = save_interval_sec
-        # 创建检查点目录（如果不存在）
-        if not os.path.exists(self.checkpoint_dir):
-            os.makedirs(self.checkpoint_dir)
+        os.makedirs(self.checkpoint_dir, exist_ok=True)
         tprint(f"创建检查点目录: {self.checkpoint_dir}")
 
     def get_latest_checkpoint_dir(self):

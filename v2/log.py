@@ -5,7 +5,7 @@ rank = int(os.environ.get('RANK', -1))
 
 def get_log_file():
     """获取日志文件路径"""
-    log_dir = 'logs'
+    log_dir = 'experiments/logs'
     os.makedirs(log_dir, exist_ok=True)
     return os.path.join(log_dir, f'train_{rank}.log')
 
