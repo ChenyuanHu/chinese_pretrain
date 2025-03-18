@@ -31,17 +31,30 @@ class DataMapper:
 
     def _process_chunk(self, chunk_data, worker_id, temp_dir):
         """处理数据集的一个分片"""
-        buffer_size = 1000000
+        buffer_size = 10000000
         token_buffer = []
         temp_file_path = os.path.join(temp_dir, f"chunk_{worker_id}_{uuid.uuid4().hex}.bin")
         
+        # 记录开始时间和上次打印时间
+        start_time = time.time()
+        last_log_time = start_time
+        total_items = len(chunk_data)
+        
         with open(temp_file_path, "wb") as f:
-            for item in chunk_data:
+            for i, item in enumerate(chunk_data):
                 text = self.text_fn(item)
                 encoded = self.tokenizer.encode(text)
                 tokens = [self.tokenizer.bos_token_id] + encoded + [self.tokenizer.eos_token_id]
                 
                 token_buffer.extend(tokens)
+                
+                # 每30秒打印一次进度
+                current_time = time.time()
+                if current_time - last_log_time >= 30:
+                    progress = (i + 1) / total_items * 100
+                    elapsed = current_time - start_time
+                    tprint(f"Worker {worker_id}: 已处理 {i+1}/{total_items} 项 ({progress:.2f}%), 用时 {elapsed:.2f}秒")
+                    last_log_time = current_time
                 
                 if len(token_buffer) >= buffer_size:
                     packed_data = struct.pack(f"{len(token_buffer)}i", *token_buffer)
@@ -51,6 +64,10 @@ class DataMapper:
             if token_buffer:
                 packed_data = struct.pack(f"{len(token_buffer)}i", *token_buffer)
                 f.write(packed_data)
+                
+        # 完成时打印最终进度
+        total_time = time.time() - start_time
+        tprint(f"Worker {worker_id}: 已完成全部 {total_items} 项处理, 总用时 {total_time:.2f}秒")
         
         return temp_file_path
     
