@@ -14,11 +14,24 @@ class CausalSelfAttention(nn.Module):
         self.n_head = config.n_head
         self.n_embd = config.n_embd
         self.n_kv_head = config.n_kv_head
-        self.flash_attn = config.flash_attn
         self.hd = self.n_embd // self.n_head
         self.n_rep = self.n_head // self.n_kv_head
 
         self.rope = rope
+
+        self.flash_attn_backends = []
+        self.flash_attn = False
+        flash_attn_backends = config.flash_attn.split("|")
+        if "FLASH_ATTENTION" in flash_attn_backends:
+            self.flash_attn_backends.append(SDPBackend.FLASH_ATTENTION)
+        if "EFFICIENT_ATTENTION" in flash_attn_backends:
+            self.flash_attn_backends.append(SDPBackend.EFFICIENT_ATTENTION)
+        if "MATH" in flash_attn_backends:
+            self.flash_attn_backends.append(SDPBackend.MATH)
+        if "CUDNN_ATTENTION" in flash_attn_backends:
+            self.flash_attn_backends.append(SDPBackend.CUDNN_ATTENTION)
+        if len(self.flash_attn_backends) != 0:
+            self.flash_attn = True
 
         # key, query, value projections
         self.c_attn = nn.Linear(config.n_embd, (config.n_head + 2 * config.n_kv_head) * self.hd, bias=False)
@@ -57,10 +70,9 @@ class CausalSelfAttention(nn.Module):
 
         q, k, v = map(lambda t: t.transpose(1, 2), (q, k, v))  # (B, NH, T, HD)
 
-        FLASH = self.flash_attn
-        if FLASH:
+        if self.flash_attn:
             # flashattention
-            with sdpa_kernel(SDPBackend.FLASH_ATTENTION):
+            with sdpa_kernel(self.flash_attn_backends):
                 y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
         else:
             # manual implementation of attention
