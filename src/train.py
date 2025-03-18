@@ -54,11 +54,6 @@ class Trainer:
         tprint(f"可训练参数量(当前GPU): {trainable_params:,}")
         tprint(f"模型总大小(当前GPU): {total_params * 4 / (1024**2):.2f} MB")  # 假设每个参数是4字节（float32）
         
-        # 打印配置信息
-        tprint(f"训练配置: {train_config}")
-        tprint(f"模型配置: {module_config}")
-        tprint(f"训练数据配置: {train_data_config}")
-
     def train(self):
         start_epoch = self.checkpoint_manager.try_load_checkpoint(self.model, self.optimizer)
         self.env.barrier()
