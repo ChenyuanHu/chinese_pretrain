@@ -49,6 +49,7 @@ class NormalCheckpointManager:
                 model.load_state_dict(state_dict['model_state_dict'])
                 start_epoch = state_dict.get('epoch', 0)
                 self.last_save_epoch = start_epoch
+                progress_percentage = state_dict.get('progress_percentage', 0)
                 tprint(f"成功加载checkpoint，将从epoch {start_epoch} 继续训练")
             except Exception as e:
                 tprint(f"使用weights_only=True模型加载失败: {str(e)}, 退出")
@@ -64,9 +65,9 @@ class NormalCheckpointManager:
         else:
             tprint("NormalCheckpointManager: 未找到checkpoint")
 
-        return start_epoch
+        return start_epoch, progress_percentage
 
-    def check_save_checkpoint(self, model, optimizer, epoch, avg_train_loss, avg_eval_loss):
+    def check_save_checkpoint(self, model, optimizer, epoch, progress_percentage):
         current_time = time.time()
         time_since_last_save = current_time - self.last_save_time
         
@@ -74,12 +75,13 @@ class NormalCheckpointManager:
             tprint(f"start save checkpoint")
             try:
                 checkpoint_path = os.path.join(self.checkpoint_dir, f"checkpoint_epoch_{epoch+1}.pt")
+                # FSDP的环境不用常规的checkpoint，不保存优化器，会报错，建议用DCP
+                optimizer_state_dict = None if self.env.enabled else optimizer.state_dict()
                 save_dict = {
                     'epoch': epoch + 1,
                     'model_state_dict': model.state_dict(),
-                    # 'optimizer_state_dict': optimizer.state_dict(),  FSDP先不保存优化器，简单处理，后续改成torch.distributed.checkpoint
-                    'train_loss': avg_train_loss,
-                    'val_loss': avg_eval_loss,
+                    'optimizer_state_dict': optimizer_state_dict,
+                    'progress_percentage': progress_percentage,
                 }
                 torch.save(save_dict, checkpoint_path)
                 tprint(f"检查点已保存到 {checkpoint_path}，距上次保存: {time_since_last_save:.2f}秒")
@@ -102,9 +104,10 @@ class AppState(Stateful):
     and optimizer.
     """
 
-    def __init__(self, model, optimizer=None):
+    def __init__(self, model, optimizer=None, progress_percentage=0):
         self.model = model
         self.optimizer = optimizer
+        self.progress_percentage = progress_percentage
 
     def state_dict(self):
         # 获取模型和优化器的状态字典
@@ -114,7 +117,8 @@ class AppState(Stateful):
             optimizer_state_dict = self.optimizer.state_dict()
         return {
             "model_state_dict": model_state_dict,
-            "optimizer_state_dict": optimizer_state_dict
+            "optimizer_state_dict": optimizer_state_dict,
+            "progress_percentage": self.progress_percentage,
         }
 
     def load_state_dict(self, state_dict):
@@ -122,6 +126,7 @@ class AppState(Stateful):
         self.model.load_state_dict(state_dict["model_state_dict"])
         if self.optimizer is not None and state_dict["optimizer_state_dict"] is not None:
             self.optimizer.load_state_dict(state_dict["optimizer_state_dict"])
+        self.progress_percentage = state_dict["progress_percentage"]
 
 
 class DCPCheckpointManager:
@@ -164,16 +169,18 @@ class DCPCheckpointManager:
     def try_load_checkpoint(self, model, optimizer):
         # 尝试加载最新的checkpoint
         latest_checkpoint, start_epoch = self.get_latest_checkpoint_dir()
+        progress_percentage = 0
         if latest_checkpoint:
             tprint(f"发现最新的checkpoint: {latest_checkpoint}")
             try:
-                state_dict = { "app": AppState(model, optimizer)}
+                state_dict = { "app": AppState(model, optimizer, progress_percentage=0)}
                 dcp.load(
                     state_dict=state_dict,
                     checkpoint_id=latest_checkpoint,
                 )
                 tprint(f"成功加载checkpoint，将从epoch {start_epoch} 继续训练")
                 self.last_save_epoch = start_epoch
+                progress_percentage = state_dict["app"].progress_percentage
             except Exception as e:
                 tprint(f"使用dcp加载失败: {str(e)}, 退出")
                 exit()
@@ -181,10 +188,10 @@ class DCPCheckpointManager:
         else:
             tprint("DCPCheckpointManager: 未找到checkpoint")
 
-        return start_epoch
+        return start_epoch, progress_percentage
         
 
-    def check_save_checkpoint(self, model, optimizer, epoch):
+    def check_save_checkpoint(self, model, optimizer, epoch, progress_percentage):
         current_time = time.time()
         time_since_last_save = current_time - self.last_save_time
         
@@ -192,7 +199,7 @@ class DCPCheckpointManager:
             tprint(f"start save dcp checkpoint")
             try:
                 checkpoint_id = os.path.join(self.checkpoint_dir, f"checkpoints_epoch_{epoch+1}")
-                state_dict = { "app": AppState(model, optimizer) }
+                state_dict = { "app": AppState(model, optimizer, progress_percentage) }
                 dcp.save(state_dict, checkpoint_id=checkpoint_id)
                 tprint(f"检查点已保存到 {checkpoint_id}，距上次保存: {time_since_last_save:.2f}秒")
                 self.last_save_time = current_time
@@ -215,14 +222,14 @@ class CheckpointManager:
         self.save_normal_checkpoint = train_config.save_normal_checkpoint
 
     def try_load_checkpoint(self, model, optimizer):
-        start_epoch = self.dcp_manager.try_load_checkpoint(model, optimizer)
+        start_epoch, progress_percentage = self.dcp_manager.try_load_checkpoint(model, optimizer)
         if start_epoch == 0:
-            start_epoch = self.normal_manager.try_load_checkpoint(model, optimizer)
-        return start_epoch
+            start_epoch, progress_percentage = self.normal_manager.try_load_checkpoint(model, optimizer)
+        return start_epoch, progress_percentage
 
-    def check_save_checkpoint(self, model, optimizer, epoch, avg_train_loss, avg_eval_loss):
+    def check_save_checkpoint(self, model, optimizer, epoch, progress_percentage):
         if self.env.master_process and self.save_normal_checkpoint:
-            self.normal_manager.check_save_checkpoint(model, optimizer, epoch, avg_train_loss, avg_eval_loss)
+            self.normal_manager.check_save_checkpoint(model, optimizer, epoch, progress_percentage)
 
         if self.save_dcp_checkpoint:
-            self.dcp_manager.check_save_checkpoint(model, optimizer, epoch)
+            self.dcp_manager.check_save_checkpoint(model, optimizer, epoch, progress_percentage)

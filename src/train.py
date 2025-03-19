@@ -55,7 +55,8 @@ class Trainer:
         tprint(f"模型总大小(当前GPU): {total_params * 4 / (1024**2):.2f} MB")  # 假设每个参数是4字节（float32）
         
     def train(self):
-        start_epoch = self.checkpoint_manager.try_load_checkpoint(self.model, self.optimizer)
+        start_epoch, progress_percentage = self.checkpoint_manager.try_load_checkpoint(self.model, self.optimizer)
+        self.data_loader.set_data_progress_percentage(progress_percentage)
         self.env.barrier()
 
         for epoch in range(start_epoch, self.train_config.num_epochs):
@@ -134,7 +135,7 @@ class Trainer:
                 f"全局验证损失: {global_eval_avg_loss:.4f}, 验证困惑度: {global_eval_ppl:.4f}")
             
             # 检查是否需要保存检查点
-            self.checkpoint_manager.check_save_checkpoint(self.model, self.optimizer, epoch, global_avg_train_loss, global_eval_avg_loss)
+            self.checkpoint_manager.check_save_checkpoint(self.model, self.optimizer, epoch, progress_percentage)
 
             self.env.barrier()
 

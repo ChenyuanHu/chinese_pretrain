@@ -261,6 +261,11 @@ class TrainDataLoader:
         
         return xs, ys, progress_percentage + self.data_epoch * 100
 
+    def set_data_progress_percentage(self, progress_percentage):
+        self.data_epoch = progress_percentage // 100
+        self.current_position = self.offset_start + (progress_percentage % 100) * self.node_data_len / 100
+        tprint(f"设置数据进度百分比: {progress_percentage}, 当前位置: {self.current_position}")
+
 
 if __name__ == "__main__":
     tokenizer = Tokenizer()
