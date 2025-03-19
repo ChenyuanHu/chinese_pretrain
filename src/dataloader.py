@@ -233,6 +233,7 @@ class TrainDataLoader:
         
         # 初始化当前位置指针
         self.current_position = self.offset_start
+        self.data_epoch = 0
         # 计算当前节点数据的总长度
         self.node_data_len = self.offset_end - self.offset_start
 
@@ -245,7 +246,8 @@ class TrainDataLoader:
             # 如果剩余数据不足block_size + 1, 回到起点，因为要预留一个的y位置
             if self.current_position + self.block_size + 1 > self.offset_end:
                 self.current_position = self.offset_start
-            
+                self.data_epoch += 1
+
             # 获取一个数据块
             x = self.tokens[self.current_position:self.current_position + self.block_size + 1]
             xs.append(x[:-1])
@@ -257,7 +259,7 @@ class TrainDataLoader:
         # 计算遍历进度百分比
         progress_percentage = ((self.current_position - self.offset_start) % self.node_data_len) / self.node_data_len * 100
         
-        return xs, ys, progress_percentage
+        return xs, ys, progress_percentage + self.data_epoch * 100
 
 
 if __name__ == "__main__":

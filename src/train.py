@@ -70,7 +70,7 @@ class Trainer:
             for step in range(self.train_config.steps_per_epoch):
                 try:
                     # 获取下一批数据
-                    x, y, _ = self.data_loader.next()
+                    x, y, progress_percentage = self.data_loader.next()
                     x = torch.tensor(x, dtype=torch.long, device=self.env.device)
                     y = torch.tensor(y, dtype=torch.long, device=self.env.device)
                     
@@ -127,10 +127,11 @@ class Trainer:
             global_eval_avg_loss, global_eval_ppl = self.evaluate_runner.evaluate(self.model, self.env.device, self.env)
 
             t1 = time.time()
-            tprint(f"Epoch [{epoch+1}/{self.train_config.num_epochs}], 用时: {(t1-t0):.2f}秒")
-            tprint(f"全局训练损失: {global_avg_train_loss:.4f}, 困惑度: {global_train_ppl:.4f}")
-            tprint(f"全局验证损失: {global_eval_avg_loss:.4f}, 验证困惑度: {global_eval_ppl:.4f}")
-            tprint(f"训练集群处理速度: {global_tokens_per_sec:.2f} tokens/s")
+            tprint(f"Epoch [{epoch+1}/{self.train_config.num_epochs}], 用时: {(t1-t0):.2f}秒, "
+                f"训练集群处理速度: {global_tokens_per_sec:.2f} tokens/s, "
+                f"数据集使用度: {progress_percentage:.2f}%, "
+                f"全局训练损失: {global_avg_train_loss:.4f}, 困惑度: {global_train_ppl:.4f}, "
+                f"全局验证损失: {global_eval_avg_loss:.4f}, 验证困惑度: {global_eval_ppl:.4f}")
             
             # 检查是否需要保存检查点
             self.checkpoint_manager.check_save_checkpoint(self.model, self.optimizer, epoch, global_avg_train_loss, global_eval_avg_loss)
