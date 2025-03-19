@@ -13,6 +13,7 @@ class RoPE:
         if self.use_scaled:
             self.base_freqs = self.apply_scaling(self.base_freqs)
 
+    @torch.compiler.disable
     def apply_rotary_emb_warp(self, xq: torch.Tensor, xk: torch.Tensor):
         """动态生成当前序列长度的位置编码"""
         B, T, H, D = xq.shape  # 假设输入形状 [B, T, H, D]
@@ -34,6 +35,7 @@ class RoPE:
         return self.apply_rotary_emb(xq, xk, freqs_cis)
 
     @staticmethod
+    @torch.compiler.disable
     def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
         """删除原断言，适配动态形状"""
         ndim = x.ndim
@@ -43,6 +45,7 @@ class RoPE:
         return freqs_cis.view(*shape)
 
     @staticmethod
+    @torch.compiler.disable
     def apply_scaling(freqs: torch.Tensor):
         # Values obtained from grid search
         scale_factor = 8
@@ -68,6 +71,7 @@ class RoPE:
         return torch.tensor(new_freqs, dtype=freqs.dtype, device=freqs.device)
 
     @staticmethod
+    @torch.compiler.disable
     def apply_rotary_emb(
         xq: torch.Tensor,
         xk: torch.Tensor,
