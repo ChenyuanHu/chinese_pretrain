@@ -12,3 +12,4 @@ dataset_cache
 templates
 checkpoints
 checkpoints_dcp
+.DS_Store
