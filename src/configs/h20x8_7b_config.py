@@ -10,6 +10,8 @@ class TrainConfig:
     save_dcp_checkpoint = True
     save_normal_checkpoint = False
 
+    compile = True
+
 # 模型参数
 class ModuleConfig:
     block_size: int = 4096

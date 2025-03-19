@@ -16,10 +16,18 @@ class Trainer:
     def __init__(self, train_config, module_config, train_data_config):
         self.env = TorchrunEnv()
         tprint(f"torchrun环境初始化完成")
-        self.env.model_init(MyModule(module_config))
-        self.model = self.env.get_model()
+        model = MyModule(module_config)
         tprint(f"模型初始化完成")
+        model.to(self.env.device)
+        tprint(f"模型移动到设备完成")
+        if train_config.compile:
+            model = torch.compile(model)
+            tprint(f"模型编译完成")
+        model = self.env.model_init(model)
+        tprint(f"模型初始化完成")
+        self.model = model
         self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4)
+        tprint(f"优化器初始化完成")
 
         self.tokenizer = Tokenizer()
         tprint(f"分词器初始化完成")

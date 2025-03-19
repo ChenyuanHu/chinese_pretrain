@@ -40,8 +40,6 @@ class TorchrunEnv:
             tprint(f"torchrun rank: {self.rank}, local rank: {self.local_rank}, world size: {self.world_size}")
 
     def model_init(self, model):
-        model.to(self.device)
-        model = torch.compile(model)
         if self.enabled:
             device_mesh = init_device_mesh(
                 "cuda", 
@@ -62,7 +60,6 @@ class TorchrunEnv:
         else:
             self.model = model
 
-    def get_model(self):
         return self.model
 
     def barrier(self):
