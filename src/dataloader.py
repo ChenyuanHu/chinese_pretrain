@@ -135,14 +135,9 @@ class DataMapper:
             with mp.Pool(processes=num_workers) as pool:
                 temp_files = []
                 
-                # 显示进度的计数器
-                completed = 0
-                
                 # 使用迭代器获取结果，这样可以在处理完成后立即获取结果
                 for _, temp_file in enumerate(pool.starmap(self._process_chunk, [(chunk, i, temp_dir) for i, chunk in enumerate(chunks)])):
                     temp_files.append(temp_file)
-                    completed += 1
-                    tprint(f"已完成 {completed}/{num_workers} 个数据块, 占比 {completed/num_workers:.2%}")
             
             # 合并所有临时文件
             tprint(f"正在合并临时文件...")
