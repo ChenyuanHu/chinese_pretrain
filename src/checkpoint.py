@@ -37,6 +37,7 @@ class NormalCheckpointManager:
         # 尝试加载最新的checkpoint
         latest_checkpoint = self.get_latest_checkpoint()
         start_epoch = 0
+        progress_percentage = 0
         if latest_checkpoint:
             tprint(f"发现最新的checkpoint: {latest_checkpoint}")
             if self.env.enabled:
