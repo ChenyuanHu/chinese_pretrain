@@ -41,7 +41,7 @@ class TorchrunEnv:
 
     def model_init(self, model):
         model.to(self.device)
-        model = torch.compile(model, mode="max-autotune")
+        model = torch.compile(model)
         if self.enabled:
             device_mesh = init_device_mesh(
                 "cuda", 
