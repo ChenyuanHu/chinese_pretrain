@@ -1,6 +1,6 @@
 # 训练循环
 class TrainConfig:
-    batch_size = 6
+    batch_size = 4
     num_epochs = 10000
     steps_per_epoch = 2000  # 每个epoch训练多少批次
     gradient_accumulation_steps = 1  # 梯度累积步数
@@ -12,7 +12,7 @@ class TrainConfig:
 
 # 模型参数
 class ModuleConfig:
-    block_size: int = 1024
+    block_size: int = 4096
     vocab_size: int = 128512  # 基础词表128000，加上特殊标记后为128512
     n_layer: int = 32
     n_head: int = 32
@@ -64,6 +64,6 @@ class TrainDataConfig:
     data = PretrainConfig()
 
     # 生成样例配置
-    max_tokens = 100
-    temperature = 0.1
-    top_k = 40
+    max_tokens = 1000
+    temperature = 0.8
+    top_k = 60
