@@ -39,7 +39,7 @@ class PretrainConfig:
         {
             "enabled": True,
             "data": fineweb_edu_chinese_2p1,
-            "weight": 5
+            "weight": 4
         },
         {
             "enabled": True,
