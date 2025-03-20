@@ -54,7 +54,7 @@ class PretrainConfig:
         {
             "enabled": True,
             "data": open_r1_math_220k,
-            "weight": 0.1
+            "weight": 0.5
         }
     ]
     
