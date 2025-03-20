@@ -45,7 +45,7 @@ class PretrainConfig:
             "weight": 3
         },
         {
-            "enabled": True,
+            "enabled": False,
             "data": codeparrot_clean_1percent,
             "weight": 1
         },
