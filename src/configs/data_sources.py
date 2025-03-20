@@ -103,3 +103,15 @@ open_r1_math_220k = {
     "text_fn": open_r1_math_220k_text_fn,
 }
 
+
+def open_math_instruct_2_ds_fn():
+    return load_dataset("nvidia/OpenMathInstruct-2", split="train")
+
+def open_math_instruct_2_text_fn(x):
+    return "问题: " + x["problem"] + "\n" + "解题过程: " + x["generated_solution"] + "\n" + "答案: " + x["expected_answer"]
+
+open_math_instruct_2 = {
+    "name": "open_math_instruct_2",
+    "ds_fn": open_math_instruct_2_ds_fn,
+    "text_fn": open_math_instruct_2_text_fn,
+}
