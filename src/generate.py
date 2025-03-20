@@ -8,7 +8,7 @@ class TextGenerator:
         self.model = model
         self.block_size = block_size
         self.tokenizer = tokenizer
-        self.prompts = train_data_config.data.case_prompts
+        self.prompts = train_data_config.case_prompts
         self.max_tokens = train_data_config.max_tokens
         self.temperature = train_data_config.temperature
         self.top_k = train_data_config.top_k

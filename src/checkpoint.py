@@ -37,7 +37,7 @@ class NormalCheckpointManager:
         # 尝试加载最新的checkpoint
         latest_checkpoint = self.get_latest_checkpoint()
         start_epoch = 0
-        progress_percentage = 0
+        progress_percentage = "{}"
         if latest_checkpoint:
             tprint(f"发现最新的checkpoint: {latest_checkpoint}")
             if self.env.enabled:
@@ -50,7 +50,7 @@ class NormalCheckpointManager:
                 model.load_state_dict(state_dict['model_state_dict'])
                 start_epoch = state_dict.get('epoch', 0)
                 self.last_save_epoch = start_epoch
-                progress_percentage = state_dict.get('progress_percentage', 0)
+                progress_percentage = state_dict.get('progress_percentage', "{}")
                 tprint(f"成功加载checkpoint，将从epoch {start_epoch} 继续训练")
             except Exception as e:
                 tprint(f"使用weights_only=True模型加载失败: {str(e)}, 退出")
@@ -170,11 +170,11 @@ class DCPCheckpointManager:
     def try_load_checkpoint(self, model, optimizer):
         # 尝试加载最新的checkpoint
         latest_checkpoint, start_epoch = self.get_latest_checkpoint_dir()
-        progress_percentage = 0
+        progress_percentage = "{}"
         if latest_checkpoint:
             tprint(f"发现最新的checkpoint: {latest_checkpoint}")
             try:
-                state_dict = { "app": AppState(model, optimizer, progress_percentage=0)}
+                state_dict = { "app": AppState(model, optimizer, progress_percentage="{}")}
                 dcp.load(
                     state_dict=state_dict,
                     checkpoint_id=latest_checkpoint,

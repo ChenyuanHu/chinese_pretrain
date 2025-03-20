@@ -7,7 +7,7 @@ class EvaluateRunner:
         # 创建一个验证集，方便模型评估
         val_dataset = []
         for i in range(50):
-            x, y, _ = data_loader.next()
+            x, y = data_loader.next()
             x = torch.tensor(x, dtype=torch.long, device=None)
             y = torch.tensor(y, dtype=torch.long, device=None)
             val_dataset.append((x[0], y[0]))

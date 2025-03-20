@@ -6,13 +6,8 @@ import multiprocessing as mp
 import uuid
 import glob
 import time
-import re
-
-def sanitize_path(path_str):
-    """清理路径字符串，使其对Windows和Unix系统都友好"""
-    # 替换Windows不允许的字符
-    sanitized = re.sub(r'[\\/*?:"<>|[\]%]', '_', str(path_str))
-    return sanitized
+import random
+import json
 
 # 创建包装器类用于处理函数参数
 class TextFnWrapper:
@@ -22,22 +17,15 @@ class TextFnWrapper:
     def __call__(self, x):
         return self.fn(x)
 
-class DataMapper:
-    def __init__(self, path, data_dir, split, tokenizer, text_fn, cache_dir="./dataset_cache", num_workers=None):
-        self.path = path
-        self.data_dir = data_dir
-        self.split = split
-
+class DataPreparer:
+    def __init__(self, source, tokenizer, cache_dir="./dataset_cache", num_workers=None):
+        self.source = source
         self.tokenizer = tokenizer
-        self.text_fn = TextFnWrapper(text_fn)
-
         self.cache_dir = cache_dir
-        # 确保文件路径是系统兼容的
-        safe_path = sanitize_path(path)
-        safe_data_dir = sanitize_path(data_dir)
-        safe_split = sanitize_path(split)
-        self.file_path = os.path.join(self.cache_dir, safe_path, f"{safe_data_dir}_{safe_split}.bin")
         self.num_workers = num_workers if num_workers is not None else max(1, mp.cpu_count() - 2)
+
+        self.text_fn = TextFnWrapper(source["text_fn"])
+        self.file_path = os.path.join(self.cache_dir, f"{source['name']}.bin")
 
     def _process_chunk(self, chunk_data, worker_id, temp_dir):
         """处理数据集的一个分片"""
@@ -53,6 +41,8 @@ class DataMapper:
         with open(temp_file_path, "wb") as f:
             for i, item in enumerate(chunk_data):
                 text = self.text_fn(item)
+                if text is None or text == "":
+                    continue
                 encoded = self.tokenizer.encode(text)
                 tokens = [self.tokenizer.bos_token_id] + encoded + [self.tokenizer.eos_token_id]
                 
@@ -103,10 +93,10 @@ class DataMapper:
         os.makedirs(os.path.dirname(self.file_path), exist_ok=True)
         if os.path.exists(self.file_path):
             tprint(f"数据集预处理文件已存在: {self.file_path}")
-            return
+            return self.file_path
 
-        tprint(f"正在加载数据集: {self.path}, {self.data_dir}, {self.split}...")
-        raw_dataset = load_dataset(self.path, data_dir=self.data_dir, split=self.split)
+        tprint(f"正在加载数据集: {self.source['name']}...")
+        raw_dataset = self.source["ds_fn"]()
         tprint(f"数据集长度: {len(raw_dataset)}")
         
         # 创建临时目录
@@ -153,6 +143,13 @@ class DataMapper:
                 tprint(f"清理临时文件时出错: {e}")
         
         tprint(f"数据集预处理完毕，已保存到: {self.file_path}")
+        return self.file_path
+        
+
+class DataMapper:
+    def __init__(self, path, cache_dir="./dataset_cache"):
+        self.cache_dir = cache_dir
+        self.file_path = path
 
     def map_to_array(self):
         if not os.path.exists(self.file_path):
@@ -206,25 +203,24 @@ from config import PretrainConfig, SftConfig, TrainDataConfig
 from tokenizer import Tokenizer
 
 class TrainDataLoader:
-    def __init__(self, world_size, rank, local_rank, batch_size, block_size, tokenizer):
+    def __init__(self, path, world_size, rank, local_rank, batch_size, block_size):
         self.world_size = world_size
         self.rank = rank
         self.local_rank = local_rank
         self.batch_size = batch_size
         self.block_size = block_size
-        self.tokenizer = tokenizer
-        self.data = TrainDataConfig().data
-        self.data_mapper = DataMapper(self.data.path, self.data.data_dir, self.data.split, self.tokenizer, self.data.text_fn, num_workers=None)
+        self.path = path
+        self.data_mapper = DataMapper(self.path)
 
         self.tokens = self.data_mapper.map_to_array()
         self.all_tokens_len = len(self.tokens)
 
         node_data_len = self.all_tokens_len // self.world_size
-        tprint(f"总体样本token数量: {self.all_tokens_len}, 每个节点样本token数量: {node_data_len}")
+        tprint(f"{self.path} 总体样本token数量: {self.all_tokens_len}, 每个节点样本token数量: {node_data_len}")
 
         self.offset_start = self.rank * node_data_len
         self.offset_end = self.offset_start + node_data_len
-        tprint(f"当前节点token offset: {self.offset_start} - {self.offset_end}")
+        tprint(f"{self.path} 当前节点token offset: {self.offset_start} - {self.offset_end}")
         
         # 初始化当前位置指针
         self.current_position = self.offset_start
@@ -251,25 +247,101 @@ class TrainDataLoader:
             # 移动指针
             self.current_position += self.block_size
         
-        # 计算遍历进度百分比
-        progress_percentage = ((self.current_position - self.offset_start) % self.node_data_len) / self.node_data_len * 100
-        
-        return xs, ys, progress_percentage + self.data_epoch * 100
+        return xs, ys
 
     def set_data_progress_percentage(self, progress_percentage):
         self.data_epoch = progress_percentage // 100
         self.current_position = int(self.offset_start + (progress_percentage % 100) * self.node_data_len / 100)
-        tprint(f"设置数据进度百分比: {progress_percentage}, 当前位置: {self.current_position}")
+        tprint(f"{self.path} 设置数据进度百分比: {progress_percentage}, 当前位置: {self.current_position}")
+
+    def get_data_progress_percentage(self):
+        return ((self.current_position - self.offset_start) % self.node_data_len) / self.node_data_len * 100 + self.data_epoch * 100
+
+
+class MixTrainDataLoader:
+    def __init__(self, world_size, rank, local_rank, batch_size, block_size, cache_dir="./dataset_cache"):
+        self.train_data_loaders = {}
+        self.loader_names = []
+        self.loader_weights = []
+        self.cache_dir = cache_dir
+
+        for source in TrainDataConfig().data.datasets:
+            if not source["enabled"]:
+                continue
+            name = source["data"]["name"]
+            file_path = os.path.join(self.cache_dir, f"{name}.bin")
+            if not os.path.exists(file_path):
+                raise FileNotFoundError(f"找不到预处理文件：{file_path}. 请使用python dataloader.py预处理数据集")
+            self.train_data_loaders[name] = TrainDataLoader(file_path, world_size, rank, local_rank, batch_size, block_size)
+            self.loader_names.append(name)
+            # 如果没有指定权重，默认为1.0
+            self.loader_weights.append(source.get("weight", 1.0))
+            
+        # 确保权重总和为1.0
+        weight_sum = sum(self.loader_weights)
+        if weight_sum != 1.0 and weight_sum > 0:
+            self.loader_weights = [w / weight_sum for w in self.loader_weights]
+            tprint(f"数据加载器权重已归一化: {list(zip(self.loader_names, self.loader_weights))}")
+
+    def next(self):
+        # 根据权重随机选择一个loader
+        chosen_name = random.choices(self.loader_names, weights=self.loader_weights, k=1)[0]
+        return self.train_data_loaders[chosen_name].next()
+
+    def set_data_progress_percentage(self, progress_percentage):
+        try:
+            # 尝试解析JSON字符串
+            progress_data = json.loads(progress_percentage)
+            
+            # 为每个数据加载器设置进度
+            for name, loader in self.train_data_loaders.items():
+                # 如果在JSON中找到对应的数据集进度，则使用它
+                # 否则默认为0
+                progress = progress_data.get(name, 0)
+                loader.set_data_progress_percentage(progress)
+                tprint(f"为数据集 {name} 设置进度: {progress}")
+        except json.JSONDecodeError:
+            # 如果输入不是有效的JSON，将所有进度设为0
+            tprint(f"无效的进度JSON字符串，将所有数据集进度重置为0")
+            for name, loader in self.train_data_loaders.items():
+                loader.set_data_progress_percentage(0)
+
+    def get_data_progress_percentage(self):
+        # 收集所有数据加载器的进度
+        progress_data = {}
+        for name, loader in self.train_data_loaders.items():
+            progress_data[name] = loader.get_data_progress_percentage()
+            
+        # 将进度数据转换为JSON字符串并返回
+        return json.dumps(progress_data)
 
 
 if __name__ == "__main__":
     tokenizer = Tokenizer()
-    data_mapper = DataMapper(PretrainConfig.path, PretrainConfig.data_dir, PretrainConfig.split, tokenizer, PretrainConfig.text_fn, num_workers=None)
-    data_mapper.preprocess_to_file()
-    tokens = data_mapper.map_to_array()
-    tprint(f"pretrain tokens length: {len(tokens)}")
+    tokenss = []
+    for source in PretrainConfig.datasets:
+        if not source["enabled"]:
+            continue
+        data_preparer = DataPreparer(source["data"], tokenizer)
+        path = data_preparer.preprocess_to_file()
+        data_mapper = DataMapper(path)
+        tokens = data_mapper.map_to_array()
+        tprint(f"{source['data']['name']} tokens length: {len(tokens)}")
+        tokenss.append(tokens)
 
-    data_mapper = DataMapper(SftConfig.path, SftConfig.data_dir, SftConfig.split, tokenizer, SftConfig.text_fn, num_workers=None)
-    data_mapper.preprocess_to_file()
-    tokens = data_mapper.map_to_array()
-    tprint(f"sft tokens length: {len(tokens)}")
+    for source in SftConfig.datasets:
+        if not source["enabled"]:
+            continue
+        data_preparer = DataPreparer(source["data"], tokenizer)
+        path = data_preparer.preprocess_to_file()
+        data_mapper = DataMapper(path)
+        tokens = data_mapper.map_to_array()
+        tprint(f"{source['data']['name']} tokens length: {len(tokens)}")
+        tokenss.append(tokens)
+
+    train_data_loader = MixTrainDataLoader(1, 0, 0, 1, 1024)
+    tprint("打印10个case检查一下")
+    for _ in range(10):
+        xs, _ = train_data_loader.next()
+        tprint("="*80)
+        tprint(f"xs: {tokenizer.decode(xs[0])}")

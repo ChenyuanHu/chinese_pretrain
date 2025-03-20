@@ -32,38 +32,42 @@ class ModuleConfig:
     use_scaled_rope: bool = True
     use_block_checkpoint: bool = True
 
+from configs.data_sources import *
 
 class PretrainConfig:
-    path = "opencsg/Fineweb-Edu-Chinese-V2.1"
-    data_dir = "4_5"
-    split = "train"
-
-    # 样例Prompt
-    case_prompts = [
-        "中华人民共和国2020年的的中共中央总书记是",
-        ""
+    datasets = [
+        {
+            "enabled": True,
+            "data": fineweb_edu_chinese_2p1,
+            "weight": 3
+        },
+        {
+            "enabled": True,
+            "data": codeparrot_clean,
+            "weight": 1
+        },
+        {
+            "enabled": False,
+            "data": zh_en_translation,
+            "weight": 1
+        },
     ]
-
-    def text_fn(x):
-        return x["text"]
+    
 
 class SftConfig:
-    path = "Congliu/Chinese-DeepSeek-R1-Distill-data-110k-SFT"
-    data_dir = None
-    split = "train"
-
-    # 样例Prompt
-    case_prompts = [
-        "<|im_start|>用户\n请根据规律填充这两个空缺的数字。 4, 3, 4, 3, 4, 3, （），（）\n<|im_end|>\n<|im_start|>助手\n",
-        "<|im_start|>用户\n中华人民共和国的2020年的总书记是谁？\n<|im_end|>\n<|im_start|>助手\n",
-        "<|im_start|>用户\n你是谁？\n<|im_end|>\n<|im_start|>助手\n"
+    datasets = [
+        {
+            "enabled": True,
+            "data": sft_r1_distill,
+            "weight": 1
+        }
     ]
 
-    def text_fn(x):
-        return "<|im_start|>用户\n" + x["instruction"] + "\n<|im_end|>\n<|im_start|>助手\n" + x["output"] + "\n<|im_end|>"
+from configs.case_prompts import *
 
 class TrainDataConfig:
     data = PretrainConfig()
+    case_prompts = pretrain_case_prompts
 
     # 生成样例配置
     max_tokens = 1000
