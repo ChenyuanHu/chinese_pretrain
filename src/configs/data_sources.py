@@ -89,3 +89,17 @@ sft_r1_distill = {
     "ds_fn": sft_r1_distill_ds_fn,
     "text_fn": sft_r1_distill_text_fn,
 }
+
+
+def open_r1_math_220k_ds_fn():
+    return load_dataset("open-r1/OpenR1-Math-220k", "all", split="train")
+
+def open_r1_math_220k_text_fn(x):
+    return "问题: " + x["problem"] + "\n" + "解题过程: " + x["solution"] + "\n" + "答案: " + x["answer"]
+
+open_r1_math_220k = {
+    "name": "open_r1_math_220k",
+    "ds_fn": open_r1_math_220k_ds_fn,
+    "text_fn": open_r1_math_220k_text_fn,
+}
+

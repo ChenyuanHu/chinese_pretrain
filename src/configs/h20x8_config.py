@@ -47,10 +47,15 @@ class PretrainConfig:
             "weight": 1
         },
         {
-            "enabled": False,
+            "enabled": True,
             "data": zh_en_translation,
             "weight": 0.1
         },
+        {
+            "enabled": True,
+            "data": open_r1_math_220k,
+            "weight": 0.1
+        }
     ]
     
 
