@@ -162,7 +162,7 @@ class Trainer:
 
 
             #tprint(f"全局验证损失: {global_eval_avg_loss:.4f}, 困惑度: {global_eval_ppl:.4f}")
-            tprint(f"数据集使用度: {', '.join([f'{k}: {v*100:.2f}%' for k,v in data_progress_percentage.items()])}")
+            tprint(f"数据集使用度: {data_progress_percentage}")
             
             # 检查是否需要保存检查点
             self.checkpoint_manager.check_save_checkpoint(self.model, self.optimizer, epoch, data_progress_percentage)
