@@ -4,7 +4,6 @@ import torch.distributed as dist
 import time
 from env import TorchrunEnv
 from module import MyModule
-from tokenizer import Tokenizer
 from dataloader import MixTrainDataLoader
 from generate import TextGenerator
 from checkpoint import CheckpointManager
@@ -34,9 +33,7 @@ class Trainer:
         self.evaluate_runner = EvaluateRunner(self.data_loader, train_config.batch_size)
         tprint(f"评估器初始化完成")
 
-        self.tokenizer = Tokenizer()
-        tprint(f"分词器初始化完成")
-        self.text_generator = TextGenerator(self.model, module_config.block_size, self.tokenizer, train_data_config, device=self.env.device)
+        self.text_generator = TextGenerator(self.model, module_config.block_size, train_data_config, device=self.env.device)
         tprint(f"文本生成器初始化完成")
         self.checkpoint_manager = CheckpointManager(self.env, train_config)
         tprint(f"检查点管理器初始化完成")

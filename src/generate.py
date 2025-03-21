@@ -2,12 +2,13 @@ import torch
 import torch.nn.functional as F
 import random
 from log import tprint
+from tokenizer import Tokenizer
 
 class TextGenerator:
-    def __init__(self, model, block_size, tokenizer, train_data_config, device="cpu"):
+    def __init__(self, model, block_size, train_data_config, device="cpu"):
         self.model = model
         self.block_size = block_size
-        self.tokenizer = tokenizer
+        self.tokenizer = Tokenizer()
         self.prompts = train_data_config.case_prompts
         self.max_tokens = train_data_config.max_tokens
         self.temperature = train_data_config.temperature
