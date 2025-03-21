@@ -58,8 +58,8 @@ class Trainer:
         self.train_config = train_config
         self.module_config = module_config
 
-        assert self.module_config.dtype in {"float32", "float16", "bfloat16"}, f"dtype must be float32, float16 or bfloat16"
-        ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[self.module_config.dtype]
+        assert self.module_config.dtype in {"float32", "float16", "bfloat16", "float8_e4m3fn", "float8_e5m2"}, f"dtype must be float32, float16, bfloat16 or float8_e4m3fn or float8_e5m2"
+        ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16, 'float8_e4m3fn': torch.float8_e4m3fn, 'float8_e5m2': torch.float8_e5m2}[self.module_config.dtype]
         self.amp = torch.amp.autocast(device_type=self.env.device_type, dtype=ptdtype)
         self.amp_scaler = torch.amp.GradScaler(
             init_scale=2**16,
