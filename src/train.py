@@ -168,9 +168,9 @@ class Trainer:
             self.checkpoint_manager.check_save_checkpoint(self.model, self.optimizer, epoch, data_progress_percentage)
 
             self.env.barrier()
-
             # 每个epoch结束后生成示例文本
             self.text_generator.generate_examples()
+            self.env.barrier()
 
     def cleanup(self):
         if self.env.enabled:

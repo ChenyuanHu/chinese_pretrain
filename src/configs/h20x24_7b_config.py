@@ -1,6 +1,3 @@
-import torch._dynamo.config
-torch._dynamo.config.cache_size_limit = 64
-
 # 训练循环
 class TrainConfig:
     batch_size = 1
@@ -15,7 +12,7 @@ class TrainConfig:
     save_dcp_checkpoint = True
     save_normal_checkpoint = False
 
-    compile = True
+    compile = False # 模型编译在当前配置下与demo推理的时候不兼容
     full_shard = True
 
 # 模型参数
@@ -86,6 +83,6 @@ class TrainDataConfig:
     case_prompts = pretrain_case_prompts
 
     # 生成样例配置
-    max_tokens = 1000
+    max_tokens = 100
     temperature = 0.8
     top_k = 60
