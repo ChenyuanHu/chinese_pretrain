@@ -19,11 +19,11 @@ class Trainer:
         tprint(f"模型初始化完成")
         model.to(self.env.device)
         tprint(f"模型移动到设备完成")
+        model = self.env.model_init(model, full_shard=True if hasattr(train_config, "full_shard") and train_config.full_shard else False)
+        tprint(f"模型分布式训练环境初始化完成")
         if train_config.compile:
             model = torch.compile(model)
             tprint(f"模型编译完成")
-        model = self.env.model_init(model, full_shard=True if hasattr(train_config, "full_shard") and train_config.full_shard else False)
-        tprint(f"模型初始化完成")
         self.model = model
         # 使用32位的AdamW优化器，设置betas和权重衰减
         self.optimizer = optim.AdamW(
