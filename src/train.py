@@ -30,8 +30,8 @@ class Trainer:
 
         self.data_loader = MixTrainDataLoader(self.env.world_size, self.env.rank, self.env.local_rank, train_config.batch_size, module_config.block_size)
         tprint(f"数据加载器初始化完成")
-        self.evaluate_runner = EvaluateRunner(self.data_loader, train_config.batch_size)
-        tprint(f"评估器初始化完成")
+        # self.evaluate_runner = EvaluateRunner(self.data_loader, train_config.batch_size)
+        # tprint(f"评估器初始化完成")
 
         self.text_generator = TextGenerator(self.model, module_config.block_size, train_data_config, device=self.env.device)
         tprint(f"文本生成器初始化完成")
@@ -130,7 +130,7 @@ class Trainer:
             global_tokens_per_sec = global_train_tokens / (time.time() - t0)
 
             # 在验证集上评估
-            global_eval_avg_loss, global_eval_ppl = self.evaluate_runner.evaluate(self.model, self.env.device, self.env)
+            # global_eval_avg_loss, global_eval_ppl = self.evaluate_runner.evaluate(self.model, self.env.device, self.env)
 
             t1 = time.time()
             data_progress_percentage = self.data_loader.get_data_progress_percentage()
@@ -139,7 +139,7 @@ class Trainer:
                 f"训练损失: {global_avg_train_loss:.4f}, 困惑度: {global_train_ppl:.4f}")
 
 
-            tprint(f"全局验证损失: {global_eval_avg_loss:.4f}, 困惑度: {global_eval_ppl:.4f}")
+            #tprint(f"全局验证损失: {global_eval_avg_loss:.4f}, 困惑度: {global_eval_ppl:.4f}")
             tprint(f"数据集使用度: {data_progress_percentage}")
             
             # 检查是否需要保存检查点
