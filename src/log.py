@@ -2,6 +2,7 @@ import os
 from datetime import datetime
 
 rank = int(os.environ.get('RANK', -1))
+local_rank = int(os.environ.get('LOCAL_RANK', -1))
 
 def get_log_file():
     """获取日志文件路径"""
@@ -21,7 +22,8 @@ def tprint(*args, **kwargs):
         log_str = f'[{time_str}] ' + ' '.join(map(str, args))
     
     # 打印到标准输出
-    print(log_str, **kwargs)
+    if local_rank == 0 or local_rank == -1:
+        print(log_str, **kwargs)
     
     # 写入到日志文件
     with open(LOG_FILE, 'a', encoding='utf-8') as f:
