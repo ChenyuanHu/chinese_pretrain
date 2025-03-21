@@ -9,7 +9,7 @@ class TrainConfig:
 
     # checkpoint config
     save_interval_sec = 1800  # 每n秒保存一次模型
-    save_dcp_checkpoint = True
+    save_dcp_checkpoint = True         # **** 多几多卡的dcp一定要存储在一个所有机器都能访问到的共享存储上面
     save_normal_checkpoint = False
 
     # FSDP full_shard初始化里面打开了transformer_auto_wrap_policy，非常节省显存，但是跟generate.py中的推理不兼容，跟模型编译也有一些兼容问题。pytorch版本2.5.1
@@ -20,7 +20,7 @@ class TrainConfig:
 
 # 模型参数
 class ModuleConfig:
-    block_size: int = 4096
+    block_size: int = 8192
     vocab_size: int = 128512  # 基础词表128000，加上特殊标记后为128512
     n_layer: int = 32
     n_head: int = 32
