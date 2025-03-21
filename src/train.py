@@ -26,7 +26,7 @@ class Trainer:
         model = self.env.model_init(model)
         tprint(f"模型初始化完成")
         self.model = model
-        self.optimizer = optim.AdamW(self.model.parameters(), lr=3e-5)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4)
         tprint(f"优化器初始化完成")
 
         self.data_loader = MixTrainDataLoader(self.env.world_size, self.env.rank, self.env.local_rank, train_config.batch_size, module_config.block_size)
