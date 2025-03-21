@@ -122,7 +122,7 @@ class Trainer:
                         self.optimizer.zero_grad()
                     
                     current_time = time.time()
-                    if self.env.master_process and current_time - last_print_time >= 30:  # 每30秒打印一次
+                    if self.env.local_rank == 0 and current_time - last_print_time >= 30:  # 每30秒打印一次
                         tokens_per_sec = total_train_tokens / (current_time - t0)
                         current_lr = int(self.scheduler.get_last_lr()[0] * 1e5)
                         tprint(f"Epoch {epoch+1}, Step {step+1}/{self.train_config.steps_per_epoch}, Loss: {loss.item():.4f}, LR: {current_lr}e-5, tokens/s/gpu: {tokens_per_sec:.2f}")
