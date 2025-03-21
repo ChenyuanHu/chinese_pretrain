@@ -51,8 +51,12 @@ class Trainer:
         # self.evaluate_runner = EvaluateRunner(self.data_loader, train_config.batch_size)
         # tprint(f"评估器初始化完成")
 
-        self.text_generator = TextGenerator(self.model, module_config.block_size, train_data_config, device=self.env.device)
-        tprint(f"文本生成器初始化完成")
+        if hasattr(train_config, "disable_text_generator") and train_config.disable_text_generator:
+            self.text_generator = None
+        else:
+            self.text_generator = TextGenerator(self.model, module_config.block_size, train_data_config, device=self.env.device)
+            tprint(f"文本生成器初始化完成")
+
         self.checkpoint_manager = CheckpointManager(self.env, train_config)
         tprint(f"检查点管理器初始化完成")
         self.train_config = train_config
@@ -169,7 +173,8 @@ class Trainer:
 
             self.env.barrier()
             # 每个epoch结束后生成示例文本
-            self.text_generator.generate_examples()
+            if self.text_generator is not None:
+                self.text_generator.generate_examples()
             self.env.barrier()
 
     def cleanup(self):

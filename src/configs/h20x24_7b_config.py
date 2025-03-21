@@ -12,8 +12,11 @@ class TrainConfig:
     save_dcp_checkpoint = True
     save_normal_checkpoint = False
 
-    compile = False # 模型编译在当前配置下与demo推理的时候不兼容
+    # FSDP full_shard初始化里面打开了transformer_auto_wrap_policy，非常节省显存，但是跟generate.py中的推理不兼容，跟模型编译也有一些兼容问题。pytorch版本2.5.1
+    disable_text_generator = True
+    compile = True
     full_shard = True
+
 
 # 模型参数
 class ModuleConfig:
