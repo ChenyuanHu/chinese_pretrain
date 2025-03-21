@@ -3,6 +3,7 @@ import torch
 import torch.distributed as dist
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp import ShardingStrategy, MixedPrecision
+from torch.distributed.fsdp import CPUOffload
 from torch.distributed.device_mesh import init_device_mesh
 from log import tprint
 
@@ -39,7 +40,12 @@ class TorchrunEnv:
             self.master_process = self.rank == 0 # this process will do logging, checkpointing etc.
             tprint(f"torchrun rank: {self.rank}, local rank: {self.local_rank}, world size: {self.world_size}")
 
-    def model_init(self, model):
+    def model_init(self, model, use_cpu_offload=False):
+        if use_cpu_offload:
+            cpu_offload = CPUOffload(offload_params=True)
+        else:
+            cpu_offload = None
+
         if self.enabled:
             device_mesh = init_device_mesh(
                 "cuda", 
@@ -56,7 +62,8 @@ class TorchrunEnv:
                               device_mesh=device_mesh,
                               device_id=self.local_rank,
                               use_orig_params=True,  # 关键改进：支持非连续参数
-                              limit_all_gathers=True)
+                              limit_all_gathers=True,
+                              cpu_offload=cpu_offload)
         else:
             self.model = model
 

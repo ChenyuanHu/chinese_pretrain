@@ -6,9 +6,7 @@ import shutil
 from log import tprint
 from config import ModuleConfig
 import torch.distributed.checkpoint as dcp
-from torch.distributed.checkpoint.state_dict import get_state_dict, set_state_dict
 from torch.distributed.checkpoint.stateful import Stateful
-from torch.distributed.fsdp.fully_sharded_data_parallel import StateDictType
 
 class NormalCheckpointManager:
     def __init__(self, env, save_interval_sec):

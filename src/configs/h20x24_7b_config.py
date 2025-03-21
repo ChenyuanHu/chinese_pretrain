@@ -13,6 +13,7 @@ class TrainConfig:
     save_normal_checkpoint = False
 
     compile = True
+    use_cpu_offload = True
 
 # 模型参数
 class ModuleConfig:
