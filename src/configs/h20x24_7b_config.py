@@ -1,3 +1,6 @@
+import torch._dynamo.config
+torch._dynamo.config.cache_size_limit = 64
+
 # 训练循环
 class TrainConfig:
     batch_size = 1
@@ -5,7 +8,7 @@ class TrainConfig:
 
     num_epochs = 10000 # 一般不结束
     scheduler_epochs = 100 # 调度器预期训练收敛需要的epoch数
-    steps_per_epoch = 500  # 每个epoch训练多少批次
+    steps_per_epoch = 1000  # 每个epoch训练多少批次
 
     # checkpoint config
     save_interval_sec = 1800  # 每n秒保存一次模型
@@ -13,6 +16,7 @@ class TrainConfig:
     save_normal_checkpoint = False
 
     compile = True
+    full_shard = True
 
 # 模型参数
 class ModuleConfig:
@@ -51,12 +55,12 @@ class PretrainConfig:
         {
             "enabled": True,
             "data": zh_en_translation_v2,
-            "weight": 0.05
+            "weight": 0.0005
         },
         {
             "enabled": True,
             "data": open_r1_math_220k,
-            "weight": 0.2
+            "weight": 0.01
         },
         {
             "enabled": True,

@@ -1,11 +1,14 @@
 import os
+import functools
 import torch
 import torch.distributed as dist
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp import ShardingStrategy, MixedPrecision
 from torch.distributed.fsdp import CPUOffload
 from torch.distributed.device_mesh import init_device_mesh
+from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 from log import tprint
+from module import Block
 
 class TorchrunEnv:
     def __init__(self):
@@ -40,12 +43,8 @@ class TorchrunEnv:
             self.master_process = self.rank == 0 # this process will do logging, checkpointing etc.
             tprint(f"torchrun rank: {self.rank}, local rank: {self.local_rank}, world size: {self.world_size}")
 
-    def model_init(self, model, use_cpu_offload=False):
-        if use_cpu_offload:
-            cpu_offload = CPUOffload(offload_params=True)
-        else:
-            cpu_offload = None
-
+    # 如果显存不是特别紧张，用这个，速度快
+    def model_init_hybrid(self, model):
         if self.enabled:
             device_mesh = init_device_mesh(
                 "cuda", 
@@ -62,12 +61,43 @@ class TorchrunEnv:
                               device_mesh=device_mesh,
                               device_id=self.local_rank,
                               use_orig_params=True,  # 关键改进：支持非连续参数
-                              limit_all_gathers=True,
-                              cpu_offload=cpu_offload)
+                              limit_all_gathers=True)
         else:
             self.model = model
 
         return self.model
+
+    # 如果显存特别紧张，用这个，速度慢
+    def model_init_full(self, model):
+        if not self.enabled:
+            self.model = model
+            return self.model
+
+        # 定义自动包装策略
+        auto_wrap_policy = functools.partial(
+            transformer_auto_wrap_policy,
+            transformer_layer_cls={Block}
+        )
+
+        self.model = FSDP(model,
+                    sharding_strategy=ShardingStrategy.FULL_SHARD,
+                    mixed_precision=MixedPrecision(
+                        param_dtype=torch.bfloat16,
+                        reduce_dtype=torch.bfloat16,
+                        buffer_dtype=torch.bfloat16,
+                    ),
+                    use_orig_params=True,  # 关键改进：支持非连续参数
+                    limit_all_gathers=True,
+                    cpu_offload=CPUOffload(offload_params=True),
+                    auto_wrap_policy=auto_wrap_policy)
+
+        return self.model
+
+    def model_init(self, model, full_shard=False):
+        if full_shard:
+            return self.model_init_full(model)
+        else:
+            return self.model_init_hybrid(model)
 
     def barrier(self):
         if self.enabled:
