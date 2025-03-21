@@ -1,4 +1,3 @@
-from datasets import load_dataset
 import os
 import mmap
 from log import tprint
@@ -8,6 +7,9 @@ import glob
 import time
 import random
 import json
+
+from config import PretrainConfig, SftConfig, TrainDataConfig
+from tokenizer import Tokenizer
 
 # 创建包装器类用于处理函数参数
 class TextFnWrapper:
@@ -198,9 +200,6 @@ class DataMapper:
                     
         return MemoryMappedTokens(self.file_path)
 
-
-from config import PretrainConfig, SftConfig, TrainDataConfig
-from tokenizer import Tokenizer
 
 class TrainDataLoader:
     def __init__(self, path, world_size, rank, local_rank, batch_size, block_size):
