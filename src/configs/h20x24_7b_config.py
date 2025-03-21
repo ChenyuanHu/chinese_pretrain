@@ -5,7 +5,7 @@ class TrainConfig:
 
     num_epochs = 10000 # 一般不结束
     scheduler_epochs = 100 # 调度器预期训练收敛需要的epoch数
-    steps_per_epoch = 2000  # 每个epoch训练多少批次
+    steps_per_epoch = 500  # 每个epoch训练多少批次
 
     # checkpoint config
     save_interval_sec = 1800  # 每n秒保存一次模型
@@ -16,7 +16,7 @@ class TrainConfig:
 
 # 模型参数
 class ModuleConfig:
-    block_size: int = 4096
+    block_size: int = 8192
     vocab_size: int = 128512  # 基础词表128000，加上特殊标记后为128512
     n_layer: int = 32
     n_head: int = 32
