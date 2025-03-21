@@ -25,7 +25,25 @@ class Trainer:
         model = self.env.model_init(model)
         tprint(f"模型初始化完成")
         self.model = model
-        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4)
+        # 使用32位的AdamW优化器，设置betas和权重衰减
+        self.optimizer = optim.AdamW(
+            self.model.parameters(), 
+            lr=3e-4,  # 最大学习率
+            betas=(0.9, 0.95),  # beta1和beta2
+            weight_decay=0.1,  # 权重衰减
+            eps=1e-8,
+            foreach=True
+        )
+        # 创建学习率调度器，从预热到最大学习率3e-4，最终降至3e-5
+        self.scheduler = optim.lr_scheduler.OneCycleLR(
+            self.optimizer,
+            max_lr=3e-4,
+            total_steps=train_config.scheduler_epochs * train_config.steps_per_epoch,
+            pct_start=0.1,  # 预热阶段占总步数的10%
+            final_div_factor=10,  # 确保最终学习率为3e-5 (3e-4/10)
+            div_factor=10,  # 起始学习率为max_lr/10
+            anneal_strategy='cos'  # 余弦退火
+        )
         tprint(f"优化器初始化完成")
 
         self.data_loader = MixTrainDataLoader(self.env.world_size, self.env.rank, self.env.local_rank, train_config.batch_size, module_config.block_size)
@@ -100,12 +118,14 @@ class Trainer:
                     if (step + 1) % self.train_config.gradient_accumulation_steps == 0 or (step + 1 == self.train_config.steps_per_epoch):
                         self.amp_scaler.step(self.optimizer)
                         self.amp_scaler.update()
+                        self.scheduler.step()  # 更新学习率
                         self.optimizer.zero_grad()
                     
                     current_time = time.time()
                     if self.env.master_process and current_time - last_print_time >= 30:  # 每30秒打印一次
                         tokens_per_sec = total_train_tokens / (current_time - t0)
-                        tprint(f"Epoch {epoch+1}, Step {step+1}/{self.train_config.steps_per_epoch}, Loss: {loss.item():.4f}, Tokens/s: {tokens_per_sec:.2f}")
+                        current_lr = int(self.scheduler.get_last_lr()[0] * 1e5)
+                        tprint(f"Epoch {epoch+1}, Step {step+1}/{self.train_config.steps_per_epoch}, Loss: {loss.item():.4f}, LR: {current_lr}e-5, tokens/s/gpu: {tokens_per_sec:.2f}")
                         last_print_time = current_time
                         
                 except Exception as e:
@@ -134,13 +154,15 @@ class Trainer:
 
             t1 = time.time()
             data_progress_percentage = self.data_loader.get_data_progress_percentage()
-            tprint(f"Epoch [{epoch+1}/{self.train_config.num_epochs}], 用时: {(t1-t0):.2f}秒, "
-                f"全局训练速度: {global_tokens_per_sec:.2f} tokens/s, "
-                f"训练损失: {global_avg_train_loss:.4f}, 困惑度: {global_train_ppl:.4f}")
+            current_lr = int(self.scheduler.get_last_lr()[0] * 1e5)
+            tprint(f"Epoch [{epoch+1}/{self.train_config.num_epochs}], {(t1-t0):.2f}sec, "
+                f"world {global_tokens_per_sec:.2f} tokens/s, "
+                f"训练损失: {global_avg_train_loss:.4f}, 困惑度: {global_train_ppl:.4f}, "
+                f"LR: {current_lr}e-5")
 
 
             #tprint(f"全局验证损失: {global_eval_avg_loss:.4f}, 困惑度: {global_eval_ppl:.4f}")
-            tprint(f"数据集使用度: {data_progress_percentage}")
+            tprint(f"数据集使用度: {', '.join([f'{k}: {v*100:.2f}%' for k,v in data_progress_percentage.items()])}")
             
             # 检查是否需要保存检查点
             self.checkpoint_manager.check_save_checkpoint(self.model, self.optimizer, epoch, data_progress_percentage)
