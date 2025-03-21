@@ -77,6 +77,15 @@ zh_en_translation = {
     "text_fn": zh_en_translation_text_fn,
 }
 
+def zh_en_translation_text_fn_v2(x):
+    return x["zh"] + " 上文翻译成英文是：" + x["en"]
+
+zh_en_translation_v2 = {
+    "name": "zh_en_translation_v2",
+    "ds_fn": zh_en_translation_ds_fn,
+    "text_fn": zh_en_translation_text_fn_v2,
+}
+
 
 def sft_r1_distill_ds_fn():
     return load_dataset("Congliu/Chinese-DeepSeek-R1-Distill-data-110k-SFT", data_dir=None, split="train")
