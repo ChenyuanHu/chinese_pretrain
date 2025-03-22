@@ -41,7 +41,7 @@ class ChatBot:
         tprint(f"模型总大小: {total_params * 4 / (1024**2):.2f} MB")  # 假设每个参数是4字节（float32）
         
     def chat(self):
-        self.checkpoint_manager.try_load_checkpoint(self.model, self.optimizer)
+        self.checkpoint_manager.try_load_checkpoint(self.model, None)
         self.env.barrier()
 
         for _ in range(10):
