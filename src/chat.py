@@ -12,18 +12,16 @@ from log import tprint
 
 class ChatBot:
     def __init__(self, train_config, module_config, train_data_config):
-        self.env = TorchrunEnv()
-        if self.env.enabled:
-            tprint(f"torchrun环境不支持chat")
-            exit()
+        self.env = TorchrunEnv(force_cpu=True)
+        tprint(f"env ready")
 
         model = MyModule(module_config)
         tprint(f"模型初始化完成")
-        # model.to(self.env.device)
-        model.to("cpu")
+        model.to(self.env.device)
         tprint(f"模型移动到设备完成")
+
         model = self.env.model_init(model)
-        tprint(f"模型分布式训练环境初始化完成")
+        tprint(f"模型环境初始化完成")
         self.model = model
 
         self.text_generator = TextGenerator(self.model, module_config.block_size, train_data_config, device=self.env.device)
@@ -43,8 +41,7 @@ class ChatBot:
         tprint(f"模型总大小: {total_params * 4 / (1024**2):.2f} MB")  # 假设每个参数是4字节（float32）
         
     def chat(self):
-        start_epoch, progress_percentage = self.checkpoint_manager.try_load_checkpoint(self.model, self.optimizer)
-        self.data_loader.set_data_progress_percentage(progress_percentage)
+        self.checkpoint_manager.try_load_checkpoint(self.model, self.optimizer)
         self.env.barrier()
 
         for _ in range(10):

@@ -11,7 +11,7 @@ from log import tprint
 from module import Block
 
 class TorchrunEnv:
-    def __init__(self):
+    def __init__(self, force_cpu=False):
         tprint("check torchrun env...")
         self.enabled = int(os.environ.get('RANK', -1)) != -1 # is this a torchrun run?
         if not self.enabled:
@@ -22,15 +22,16 @@ class TorchrunEnv:
             self.local_world_size = 1
             self.num_nodes = 1
             self.device = "cpu"
-            if torch.cuda.is_available():
+            if torch.cuda.is_available() and not force_cpu:
                 self.device = "cuda"
-            elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available() and not force_cpu:
                 self.device = "mps"
             tprint(f"使用设备: {self.device}")
             self.device_type = self.device
             self.master_process = True
         else:
             assert torch.cuda.is_available(), "for now i think we need CUDA for torch distributed training"
+            assert not force_cpu, "for now i think we can't use cpu for torch distributed training"
             dist.init_process_group(backend="nccl")
             self.rank = int(os.environ['RANK'])
             self.local_rank = int(os.environ['LOCAL_RANK'])
