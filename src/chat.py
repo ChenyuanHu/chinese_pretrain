@@ -25,8 +25,6 @@ class ChatBot:
         self.text_generator = TextGenerator(self.model, module_config.block_size, train_data_config, device=self.env.device)
         tprint(f"文本生成器初始化完成")
 
-        self.checkpoint_manager = CheckpointManager(self.env, train_config)
-        tprint(f"检查点管理器初始化完成")
         self.train_config = train_config
         self.module_config = module_config
         self.checkpoint_path = checkpoint_path
