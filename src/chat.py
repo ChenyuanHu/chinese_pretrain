@@ -1,17 +1,15 @@
 import torch
-import torch.optim as optim
 import torch.distributed as dist
-import time
+import argparse  # 添加argparse导入
 from env import TorchrunEnv
 from module import MyModule
-from dataloader import MixTrainDataLoader
 from generate import TextGenerator
 from checkpoint import CheckpointManager
 from config import TrainConfig, ModuleConfig, TrainDataConfig
 from log import tprint
 
 class ChatBot:
-    def __init__(self, train_config, module_config, train_data_config):
+    def __init__(self, train_config, module_config, train_data_config, checkpoint_path=None):
         self.env = TorchrunEnv(force_cpu=True)
         tprint(f"env ready")
 
@@ -31,6 +29,7 @@ class ChatBot:
         tprint(f"检查点管理器初始化完成")
         self.train_config = train_config
         self.module_config = module_config
+        self.checkpoint_path = checkpoint_path
 
         # 计算并打印模型参数量
         total_params = sum(p.numel() for p in self.model.parameters())
@@ -41,8 +40,16 @@ class ChatBot:
         tprint(f"模型总大小: {total_params * 4 / (1024**2):.2f} MB")  # 假设每个参数是4字节（float32）
         
     def chat(self):
-        self.checkpoint_manager.try_load_checkpoint(self.model, None)
-        self.env.barrier()
+        if not self.checkpoint_path:
+            tprint("未提供检查点路径，无法加载模型")
+            return
+            
+        tprint(f"正在加载检查点: {self.checkpoint_path}")
+        checkpoint = torch.load(self.checkpoint_path, weights_only=True)
+        model_state_dict = checkpoint["app"]["model_state_dict"]
+        model_state_dict = {k.replace("_orig_mod.", ""): v for k, v in model_state_dict.items()}
+
+        self.model.load_state_dict(model_state_dict)
 
         for _ in range(10):
             self.text_generator.generate_examples()
@@ -53,6 +60,11 @@ class ChatBot:
 
 
 if __name__ == "__main__":
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description="Chat")
+    parser.add_argument("--checkpoint", type=str, help="模型检查点路径, dcp类型可以使用 python3 -m torch.distributed.checkpoint.format_utils dcp_to_torch checkpoints_epoch_1 checkpoints_epoch_1.pt 转换")
+    args = parser.parse_args()
+    
     # 设置随机种子以确保可重复性
     torch.manual_seed(42)
     if torch.cuda.is_available():
@@ -61,6 +73,7 @@ if __name__ == "__main__":
     train_config = TrainConfig()
     module_config = ModuleConfig()
     train_data_config = TrainDataConfig()
-    chatbot = ChatBot(train_config, module_config, train_data_config)
+    
+    chatbot = ChatBot(train_config, module_config, train_data_config, checkpoint_path=args.checkpoint)
     chatbot.chat()
     chatbot.cleanup()
