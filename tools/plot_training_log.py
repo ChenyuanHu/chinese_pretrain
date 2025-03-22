@@ -10,16 +10,21 @@ losses = []
 perplexities = []
 learning_rates = []
 dataset_usage = {}
+throughputs = []  # For tokens/s
+epochs = []  # For epoch numbers
 
 with open('../src/experiments/logs/train_-1.log', 'r', encoding='utf-8') as f:
     for line in f:
-        # Extract timestamp, loss, perplexity and learning rate using regex
-        match = re.search(r'(?:\[RANK:0\])?\[(.*?)\].*?(?:训练损失|loss): ([\d.]+).*?(?:困惑度|perplexity): ([\d.]+).*?LR: ([\d.e-]+)', line, re.IGNORECASE)
+        # Extract timestamp, loss, perplexity, learning rate, throughput and epoch using regex
+        match = re.search(r'(?:\[RANK:0\])?\[(.*?)\].*?Epoch \[(\d+)/\d+\].*?([\d.]+)sec.*?world ([\d.]+) tokens/s.*?(?:训练损失|loss): ([\d.]+).*?(?:困惑度|perplexity): ([\d.]+).*?LR: ([\d.e-]+)', line, re.IGNORECASE)
         if match:
             timestamp_str = match.group(1)
-            loss = float(match.group(2))
-            perplexity = float(match.group(3))
-            lr = float(match.group(4))
+            epoch = int(match.group(2))
+            epoch_time = float(match.group(3))
+            throughput = float(match.group(4))
+            loss = float(match.group(5))
+            perplexity = float(match.group(6))
+            lr = float(match.group(7))
             
             # Parse timestamp
             timestamp = datetime.datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
@@ -27,6 +32,8 @@ with open('../src/experiments/logs/train_-1.log', 'r', encoding='utf-8') as f:
             losses.append(loss)
             perplexities.append(perplexity)
             learning_rates.append(lr)
+            throughputs.append(throughput)
+            epochs.append(epoch)
         
         # Extract dataset usage statistics
         dataset_match = re.search(r'(?:\[RANK:0\])?\[(.*?)\].*?数据集使用度: (\{.*\})', line)
@@ -58,12 +65,12 @@ with open('../src/experiments/logs/train_-1.log', 'r', encoding='utf-8') as f:
                 print(f"Error parsing JSON: {dataset_json}")
 
 # Create figure with multiple subplots
-fig = plt.figure(figsize=(20, 16))
+fig = plt.figure(figsize=(20, 20))  # Increased height for additional plots
 fig.suptitle('Training Metrics', fontsize=16)
 
 # Create GridSpec for more control over subplot layout
 from matplotlib.gridspec import GridSpec
-gs = GridSpec(3, 2, figure=fig)
+gs = GridSpec(4, 2, figure=fig)  # 4 rows instead of 3
 
 # Global loss plot
 ax1 = fig.add_subplot(gs[0, 0])
@@ -110,6 +117,24 @@ ax4.grid(True)
 ax4.legend(loc='upper left', bbox_to_anchor=(1, 1))
 ax4.set_title('Dataset Usage Over Time')
 
+# Throughput (tokens/s) plot
+ax5 = fig.add_subplot(gs[2, 0])
+ax5.plot(timestamps, throughputs, 'c-', marker='o', label='Throughput')
+ax5.set_ylabel('Tokens per Second')
+ax5.set_xlabel('Time')
+ax5.grid(True)
+ax5.legend()
+ax5.set_title('Training Throughput Over Time')
+
+# Epoch progress plot
+ax6 = fig.add_subplot(gs[2, 1])
+ax6.plot(timestamps, epochs, 'm-', marker='o', label='Epoch')
+ax6.set_ylabel('Epoch')
+ax6.set_xlabel('Time')
+ax6.grid(True)
+ax6.legend()
+ax6.set_title('Epoch Progress Over Time')
+
 # Get the most recent 30 data points (or all if less than 30)
 recent_count = min(30, len(timestamps))
 recent_timestamps = timestamps[-recent_count:]
@@ -117,25 +142,25 @@ recent_losses = losses[-recent_count:]
 recent_perplexities = perplexities[-recent_count:]
 
 # Zoomed-in loss plot
-ax5 = fig.add_subplot(gs[2, 0])
-ax5.plot(recent_timestamps, recent_losses, 'b-', marker='o', label='Loss')
-ax5.set_ylabel('Loss')
-ax5.set_xlabel('Time')
-ax5.grid(True)
-ax5.legend()
-ax5.set_title('Last {} Data Points - Loss'.format(recent_count))
+ax7 = fig.add_subplot(gs[3, 0])
+ax7.plot(recent_timestamps, recent_losses, 'b-', marker='o', label='Loss')
+ax7.set_ylabel('Loss')
+ax7.set_xlabel('Time')
+ax7.grid(True)
+ax7.legend()
+ax7.set_title('Last {} Data Points - Loss'.format(recent_count))
 
 # Zoomed-in perplexity plot
-ax6 = fig.add_subplot(gs[2, 1])
-ax6.plot(recent_timestamps, recent_perplexities, 'r-', marker='o', label='Perplexity')
-ax6.set_ylabel('Perplexity')
-ax6.set_xlabel('Time')
-ax6.grid(True)
-ax6.legend()
-ax6.set_title('Last {} Data Points - Perplexity'.format(recent_count))
+ax8 = fig.add_subplot(gs[3, 1])
+ax8.plot(recent_timestamps, recent_perplexities, 'r-', marker='o', label='Perplexity')
+ax8.set_ylabel('Perplexity')
+ax8.set_xlabel('Time')
+ax8.grid(True)
+ax8.legend()
+ax8.set_title('Last {} Data Points - Perplexity'.format(recent_count))
 
 # Rotate x-axis labels for better readability
-for ax in [ax1, ax2, ax3, ax4, ax5, ax6]:
+for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8]:
     plt.setp(ax.get_xticklabels(), rotation=45)
 
 # Adjust layout to prevent label cutoff
