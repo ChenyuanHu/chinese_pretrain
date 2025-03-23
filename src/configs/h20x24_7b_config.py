@@ -12,9 +12,7 @@ class TrainConfig:
     save_dcp_checkpoint = True         # **** 多几多卡的dcp一定要存储在一个所有机器都能访问到的共享存储上面
     save_normal_checkpoint = False
 
-    # FSDP full_shard初始化里面打开了transformer_auto_wrap_policy，非常节省显存，跟模型编译也有一些兼容问题。pytorch版本2.5.1，关掉编译速度影响<5%
-    # 编译和非编译的checkpoint是不兼容的
-    compile = False
+    compile = True
     full_shard = True
 
 
