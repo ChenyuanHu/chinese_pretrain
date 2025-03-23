@@ -5,7 +5,7 @@ from log import tprint
 from tokenizer import Tokenizer
 
 class TextGenerator:
-    def __init__(self, model, block_size, train_data_config, device="cpu"):
+    def __init__(self, model, block_size, train_data_config, device="cpu", amp=None):
         self.model = model
         self.block_size = block_size
         self.tokenizer = Tokenizer()
@@ -14,7 +14,8 @@ class TextGenerator:
         self.temperature = train_data_config.temperature
         self.top_k = train_data_config.top_k
         self.device = device
-        
+        self.amp = amp
+
     # 定义文本生成函数
     def generate_text(self, prompt):
         self.model.eval()
@@ -28,7 +29,8 @@ class TextGenerator:
         
         tokens = torch.tensor(tokens, dtype=torch.long, device=self.device).unsqueeze(0)  # [1, seq_len]
         
-        with torch.no_grad():
+        # 确保与模型使用相同的数据类型进行推理
+        with self.amp:
             while tokens.size(1) < self.max_tokens:
                 # 获取预测
                 if tokens.size(1) > self.block_size:  # 使用size(1)直接获取序列长度
@@ -74,8 +76,9 @@ class TextGenerator:
         prompt = random.choice(self.prompts)
         tprint(f"\n提示: {prompt if prompt else '(无提示)'}")
         try:
-            generated = self.generate_text(prompt)
-            tprint(f"生成: {generated}")
+            with torch.no_grad():  # 确保不会计算梯度
+                generated = self.generate_text(prompt)
+                tprint(f"生成: {generated}")
         except Exception as e:
             tprint(f"生成文本时发生错误: {str(e)}")
         tprint("-"*50)

@@ -2,6 +2,8 @@ import torch
 import torch.optim as optim
 import torch.distributed as dist
 import time
+import torch._dynamo
+torch._dynamo.config.suppress_errors = True
 from env import TorchrunEnv
 from module import MyModule
 from dataloader import MixTrainDataLoader
@@ -51,12 +53,6 @@ class Trainer:
         # self.evaluate_runner = EvaluateRunner(self.data_loader, train_config.batch_size)
         # tprint(f"评估器初始化完成")
 
-        if hasattr(train_config, "disable_text_generator") and train_config.disable_text_generator:
-            self.text_generator = None
-        else:
-            self.text_generator = TextGenerator(self.model, module_config.block_size, train_data_config, device=self.env.device)
-            tprint(f"文本生成器初始化完成")
-
         self.checkpoint_manager = CheckpointManager(self.env, train_config)
         tprint(f"检查点管理器初始化完成")
         self.train_config = train_config
@@ -64,6 +60,12 @@ class Trainer:
 
         assert self.module_config.dtype in {"float32", "float16", "bfloat16", "float8_e4m3fn", "float8_e5m2"}, f"dtype must be float32, float16, bfloat16 or float8_e4m3fn or float8_e5m2"
         ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16, 'float8_e4m3fn': torch.float8_e4m3fn, 'float8_e5m2': torch.float8_e5m2}[self.module_config.dtype]
+        
+        # 如果不是使用float32，需要为优化器也设置相同的数据类型
+        if self.module_config.dtype != "float32":
+            for param_group in self.optimizer.param_groups:
+                param_group['dtype'] = ptdtype
+                
         self.amp = torch.amp.autocast(device_type=self.env.device_type, dtype=ptdtype)
         self.amp_scaler = torch.amp.GradScaler(
             init_scale=2**16,
@@ -72,6 +74,12 @@ class Trainer:
             growth_interval=2000,
             enabled=(self.env.device_type != 'cpu' and self.env.device_type != 'mps')
         )
+
+        if hasattr(train_config, "disable_text_generator") and train_config.disable_text_generator:
+            self.text_generator = None
+        else:
+            self.text_generator = TextGenerator(self.model, module_config.block_size, train_data_config, device=self.env.device, self.amp)
+            tprint(f"文本生成器初始化完成")
 
         # 计算并打印模型参数量
         total_params = sum(p.numel() for p in self.model.parameters())
