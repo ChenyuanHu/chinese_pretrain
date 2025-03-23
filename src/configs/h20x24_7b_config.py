@@ -89,6 +89,6 @@ class TrainDataConfig:
     case_prompts = pretrain_case_prompts
 
     # 生成样例配置
-    max_tokens = 1000
+    max_tokens = 100
     temperature = 0.8
     top_k = 60

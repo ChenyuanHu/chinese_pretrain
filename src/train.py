@@ -11,6 +11,7 @@ from checkpoint import CheckpointManager
 from eval import EvaluateRunner
 from config import TrainConfig, ModuleConfig, TrainDataConfig
 from log import tprint
+import gc
 
 torch._dynamo.config.cache_size_limit = 64  # 默认是8
 
@@ -187,6 +188,9 @@ class Trainer:
             # 每个epoch结束后生成示例文本
             if self.text_generator is not None:
                 self.text_generator.generate_examples()
+                torch._dynamo.clear_cache()
+                gc.collect()
+                torch.cuda.empty_cache()
             self.env.barrier()
 
     def cleanup(self):
