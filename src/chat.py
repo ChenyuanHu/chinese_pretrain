@@ -21,7 +21,7 @@ class ChatBot:
         model.to(self.env.device)
         tprint(f"模型移动到设备完成")
 
-        model = self.env.model_init(model)
+        model = self.env.model_init(model, full_shard=True if hasattr(train_config, "full_shard") and train_config.full_shard else False)
         tprint(f"模型环境初始化完成")
         self.model = model
 
