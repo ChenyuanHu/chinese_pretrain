@@ -10,7 +10,7 @@ from log import tprint
 
 class ChatBot:
     def __init__(self, train_config, module_config, train_data_config, checkpoint_path=None):
-        if self.checkpoint_path and self.checkpoint_path.endswith(".pt"):
+        if checkpoint_path and checkpoint_path.endswith(".pt"):
             self.env = TorchrunEnv(force_cpu=True)
         else:
             self.env = TorchrunEnv()
