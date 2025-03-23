@@ -85,6 +85,7 @@ class Trainer:
         start_epoch, progress_percentage = self.checkpoint_manager.try_load_checkpoint(self.model, self.optimizer)
         self.data_loader.set_data_progress_percentage(progress_percentage)
         self.env.barrier()
+        self.scheduler.step(start_epoch)  # 更新学习率
 
         for epoch in range(start_epoch, self.train_config.num_epochs):
             self.model.train()
