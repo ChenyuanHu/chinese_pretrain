@@ -1,8 +1,11 @@
 
 pretrain_case_prompts = [
     "中华人民共和国2020年的的中共中央总书记是",
-    "Today is chinese new year. => ",
-    ""
+    "左手拿一个苹果，右手拿一根香蕉。 上文翻译成英文是： ",
+    "type struct Person ",
+    "def sum(a, b): ",
+    "12 + 22 =",
+    "x^2 + x - 650 = 0"
 ]
 
 sft_case_prompts = [
