@@ -3,8 +3,12 @@ import torch.nn.functional as F
 from log import tprint
 from tokenizer import Tokenizer
 
-# 导入torch._dynamo用于禁用动态编译
-import torch._dynamo
+# 设置torch._dynamo配置以抑制错误
+try:
+    import torch._dynamo
+    torch._dynamo.config.suppress_errors = True
+except ImportError:
+    pass
 
 class TextGenerator:
     def __init__(self, model, block_size, train_data_config, device="cpu", amp=None):
@@ -43,13 +47,8 @@ class TextGenerator:
                         tokens = tokens[:, -(self.block_size):]
                     
                     # 前向传播
-                    try:
-                        # 禁用dynamo编译的推理，以避免dtype不匹配问题
-                        with torch._dynamo.disable():
-                            logits, _ = self.model(tokens)
-                    except AttributeError:
-                        # 如果torch._dynamo不可用，直接调用模型
-                        logits, _ = self.model(tokens)
+                    # 禁用梯度计算并直接调用模型，不使用dynamo上下文管理器
+                    logits, _ = self.model(tokens)
                     
                     # 获取最后一个位置的预测
                     logits = logits[:, -1, :] / self.temperature
