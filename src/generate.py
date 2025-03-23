@@ -1,6 +1,5 @@
 import torch
 import torch.nn.functional as F
-import random
 from log import tprint
 from tokenizer import Tokenizer
 
@@ -15,6 +14,7 @@ class TextGenerator:
         self.top_k = train_data_config.top_k
         self.device = device
         self.amp = amp
+        self.prompt_id = 0
 
     # 定义文本生成函数
     def generate_text(self, prompt):
@@ -73,7 +73,8 @@ class TextGenerator:
         
         self.model.eval()  # 确保模型处于评估模式
         # 随机选择一个提示
-        prompt = random.choice(self.prompts)
+        prompt = self.prompts[self.prompt_id]
+        self.prompt_id = (self.prompt_id + 1) % len(self.prompts)
         tprint(f"\n提示: {prompt if prompt else '(无提示)'}")
         try:
             with torch.no_grad():  # 确保不会计算梯度

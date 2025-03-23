@@ -2,8 +2,7 @@ import torch
 import torch.optim as optim
 import torch.distributed as dist
 import time
-import torch._dynamo
-torch._dynamo.config.suppress_errors = True
+import random
 from env import TorchrunEnv
 from module import MyModule
 from dataloader import MixTrainDataLoader
@@ -196,6 +195,7 @@ if __name__ == "__main__":
     torch.manual_seed(42)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(42)
+    random.seed(42)
 
     train_config = TrainConfig()
     module_config = ModuleConfig()
