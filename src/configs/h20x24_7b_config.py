@@ -53,7 +53,7 @@ class PretrainConfig:
         {
             "enabled": True,
             "data": zh_en_translation_v2,
-            "weight": 0.0005
+            "weight": 0.002
         },
         {
             "enabled": True,
