@@ -56,7 +56,7 @@ class TorchrunEnv:
                               sharding_strategy=ShardingStrategy.HYBRID_SHARD,
                               mixed_precision=MixedPrecision(
                                   param_dtype=torch.bfloat16,
-                                  reduce_dtype=torch.bfloat16,
+                                  reduce_dtype=torch.float32,
                                   buffer_dtype=torch.bfloat16,
                               ),
                               device_mesh=device_mesh,
@@ -83,7 +83,7 @@ class TorchrunEnv:
                     sharding_strategy=ShardingStrategy.FULL_SHARD,
                     mixed_precision=MixedPrecision(
                         param_dtype=torch.bfloat16,
-                        reduce_dtype=torch.bfloat16,
+                        reduce_dtype=torch.float32,
                         buffer_dtype=torch.bfloat16,
                     ),
                     use_orig_params=True,  # 关键改进：支持非连续参数

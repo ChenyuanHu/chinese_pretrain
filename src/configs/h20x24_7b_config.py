@@ -12,8 +12,7 @@ class TrainConfig:
     save_dcp_checkpoint = True         # **** 多几多卡的dcp一定要存储在一个所有机器都能访问到的共享存储上面
     save_normal_checkpoint = False
 
-    # 模型编译和fuul_shard有兼容问题
-    compile = False
+    compile = True
     full_shard = True
 
 

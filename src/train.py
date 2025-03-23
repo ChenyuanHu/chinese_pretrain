@@ -25,7 +25,10 @@ class Trainer:
         model = self.env.model_init(model, full_shard=True if hasattr(train_config, "full_shard") and train_config.full_shard else False)
         tprint(f"模型分布式训练环境初始化完成")
         if train_config.compile:
-            model = torch.compile(model)
+            model = torch.compile(model,
+                    # 关闭导致类型冲突的优化
+                    dynamic=True,  
+                    disable=["max-autotune", "cudagraphs"])
             tprint(f"模型编译完成")
         self.model = model
         # 使用32位的AdamW优化器，设置betas和权重衰减
