@@ -30,20 +30,20 @@ class Trainer:
         # 使用32位的AdamW优化器，设置betas和权重衰减
         self.optimizer = optim.AdamW(
             self.model.parameters(), 
-            lr=1e-4,  # 最大学习率
+            lr=3e-4,  # 最大学习率
             betas=(0.9, 0.95),  # beta1和beta2
             weight_decay=0.1,  # 权重衰减
             eps=1e-8,
             foreach=True
         )
-        # 创建学习率调度器，从预热到最大学习率1e-4，最终降至3e-5
+        # 创建学习率调度器，从预热到最大学习率3e-4，最终降至3e-5
         self.scheduler = optim.lr_scheduler.OneCycleLR(
             self.optimizer,
-            max_lr=1e-4,
+            max_lr=3e-4,
             total_steps=train_config.scheduler_epochs * train_config.steps_per_epoch,
-            pct_start=0.05,  # 预热阶段占总步数的5%
-            final_div_factor=3,  # 确保最终学习率为3e-5 (1e-4/3)
-            div_factor=3,  # 起始学习率为max_lr/3
+            pct_start=0.1,  # 预热阶段占总步数的10%
+            final_div_factor=10,  # 确保最终学习率为3e-5 (3e-4/10)
+            div_factor=10,  # 起始学习率为max_lr/10
             anneal_strategy='cos'  # 余弦退火
         )
         tprint(f"优化器初始化完成")
