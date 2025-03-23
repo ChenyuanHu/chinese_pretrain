@@ -15,6 +15,7 @@ class TextGenerator:
         self.top_k = train_data_config.top_k
         self.device = device
         self.amp = amp
+        tprint(f"{self.amp}")
 
     # 定义文本生成函数
     def generate_text(self, prompt):
@@ -29,6 +30,7 @@ class TextGenerator:
         
         tokens = torch.tensor(tokens, dtype=torch.long, device=self.device).unsqueeze(0)  # [1, seq_len]
         
+        tprint(f"{self.amp}")
         # 确保与模型使用相同的数据类型进行推理
         with self.amp:
             while tokens.size(1) < self.max_tokens:
@@ -81,4 +83,8 @@ class TextGenerator:
                 tprint(f"生成: {generated}")
         except Exception as e:
             tprint(f"生成文本时发生错误: {str(e)}")
+            # 打印更详细的错误信息以便调试
+            import traceback
+            tprint(f"详细错误信息: {traceback.format_exc()}")
+            tprint("继续训练而不中断...")
         tprint("-"*50)
