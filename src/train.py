@@ -188,7 +188,8 @@ class Trainer:
             # 每个epoch结束后生成示例文本
             if self.text_generator is not None:
                 self.text_generator.generate_examples()
-                torch._dynamo.clear_cache()
+                if self.train_config.compile:
+                    torch.compiler.reset()
                 gc.collect()
                 torch.cuda.empty_cache()
             self.env.barrier()
