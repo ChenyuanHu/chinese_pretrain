@@ -39,7 +39,7 @@ class Trainer:
             self.optimizer,
             max_lr=1e-4,
             total_steps=train_config.scheduler_epochs * train_config.steps_per_epoch,
-            pct_start=0.05,  # 预热阶段占总步数的10%
+            pct_start=0.05,  # 预热阶段占总步数的5%
             final_div_factor=3,  # 确保最终学习率为3e-5 (1e-4/3)
             div_factor=3,  # 起始学习率为max_lr/10
             anneal_strategy='cos'  # 余弦退火
