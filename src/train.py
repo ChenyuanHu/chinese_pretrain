@@ -78,7 +78,7 @@ class Trainer:
         if hasattr(train_config, "disable_text_generator") and train_config.disable_text_generator:
             self.text_generator = None
         else:
-            self.text_generator = TextGenerator(self.model, module_config.block_size, train_data_config, device=self.env.device, self.amp)
+            self.text_generator = TextGenerator(self.model, module_config.block_size, train_data_config, device=self.env.device, amp=self.amp)
             tprint(f"文本生成器初始化完成")
 
         # 计算并打印模型参数量
