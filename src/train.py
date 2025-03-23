@@ -61,11 +61,6 @@ class Trainer:
         assert self.module_config.dtype in {"float32", "float16", "bfloat16", "float8_e4m3fn", "float8_e5m2"}, f"dtype must be float32, float16, bfloat16 or float8_e4m3fn or float8_e5m2"
         ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16, 'float8_e4m3fn': torch.float8_e4m3fn, 'float8_e5m2': torch.float8_e5m2}[self.module_config.dtype]
         
-        # 如果不是使用float32，需要为优化器也设置相同的数据类型
-        if self.module_config.dtype != "float32":
-            for param_group in self.optimizer.param_groups:
-                param_group['dtype'] = ptdtype
-                
         self.amp = torch.amp.autocast(device_type=self.env.device_type, dtype=ptdtype)
         self.amp_scaler = torch.amp.GradScaler(
             init_scale=2**16,
