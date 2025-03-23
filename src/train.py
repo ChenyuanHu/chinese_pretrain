@@ -12,6 +12,8 @@ from eval import EvaluateRunner
 from config import TrainConfig, ModuleConfig, TrainDataConfig
 from log import tprint
 
+torch._dynamo.config.cache_size_limit = 64  # 默认是8
+
 class Trainer:
     def __init__(self, train_config, module_config, train_data_config):
         self.env = TorchrunEnv()
