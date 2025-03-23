@@ -103,7 +103,7 @@ class AppState(Stateful):
     and optimizer.
     """
 
-    def __init__(self, model, optimizer=None, progress_percentage=0):
+    def __init__(self, model, optimizer=None, progress_percentage="{}"):
         self.model = model
         self.optimizer = optimizer
         self.progress_percentage = progress_percentage
