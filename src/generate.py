@@ -3,6 +3,9 @@ import torch.nn.functional as F
 from log import tprint
 from tokenizer import Tokenizer
 
+# 导入torch._dynamo用于禁用动态编译
+import torch._dynamo
+
 class TextGenerator:
     def __init__(self, model, block_size, train_data_config, device="cpu", amp=None):
         self.model = model
@@ -29,37 +32,45 @@ class TextGenerator:
         
         tokens = torch.tensor(tokens, dtype=torch.long, device=self.device).unsqueeze(0)  # [1, seq_len]
         
-        # 确保与模型使用相同的数据类型进行推理
-        with self.amp:
-            while tokens.size(1) < self.max_tokens:
-                # 获取预测
-                if tokens.size(1) > self.block_size:  # 使用size(1)直接获取序列长度
-                    # 如果序列太长，只保留后面的部分
-                    tokens = tokens[:, -(self.block_size):]
-                
-                # 前向传播
-                logits, _ = self.model(tokens)
-                
-                # 获取最后一个位置的预测
-                logits = logits[:, -1, :] / self.temperature
-                
-                # 应用top-k采样
-                if self.top_k > 0:
-                    v, _ = torch.topk(logits, min(self.top_k, logits.size(-1)))
-                    logits[logits < v[:, [-1]]] = float('-inf')
-                
-                # 应用softmax获取概率分布
-                probs = F.softmax(logits, dim=-1)
-                
-                # 采样下一个token
-                next_token = torch.multinomial(probs, num_samples=1)
-                
-                # 追加到序列
-                tokens = torch.cat([tokens, next_token], dim=1)
-                
-                # 如果生成了结束标记，提前结束
-                if next_token.item() == self.tokenizer.eos_token_id:
-                    break
+        # 使用torch.no_grad()确保不计算梯度
+        with torch.no_grad():
+            # 确保与模型使用相同的数据类型进行推理
+            with self.amp:
+                while tokens.size(1) < self.max_tokens:
+                    # 获取预测
+                    if tokens.size(1) > self.block_size:  # 使用size(1)直接获取序列长度
+                        # 如果序列太长，只保留后面的部分
+                        tokens = tokens[:, -(self.block_size):]
+                    
+                    # 前向传播
+                    try:
+                        # 禁用dynamo编译的推理，以避免dtype不匹配问题
+                        with torch._dynamo.disable():
+                            logits, _ = self.model(tokens)
+                    except AttributeError:
+                        # 如果torch._dynamo不可用，直接调用模型
+                        logits, _ = self.model(tokens)
+                    
+                    # 获取最后一个位置的预测
+                    logits = logits[:, -1, :] / self.temperature
+                    
+                    # 应用top-k采样
+                    if self.top_k > 0:
+                        v, _ = torch.topk(logits, min(self.top_k, logits.size(-1)))
+                        logits[logits < v[:, [-1]]] = float('-inf')
+                    
+                    # 应用softmax获取概率分布
+                    probs = F.softmax(logits, dim=-1)
+                    
+                    # 采样下一个token
+                    next_token = torch.multinomial(probs, num_samples=1)
+                    
+                    # 追加到序列
+                    tokens = torch.cat([tokens, next_token], dim=1)
+                    
+                    # 如果生成了结束标记，提前结束
+                    if next_token.item() == self.tokenizer.eos_token_id:
+                        break
         
         # 解码生成的token序列
         generated_tokens = tokens[0].tolist()
@@ -77,9 +88,9 @@ class TextGenerator:
         self.prompt_id = (self.prompt_id + 1) % len(self.prompts)
         tprint(f"\n提示: {prompt if prompt else '(无提示)'}")
         try:
-            with torch.no_grad():  # 确保不会计算梯度
-                generated = self.generate_text(prompt)
-                tprint(f"生成: {generated}")
+            # 不再需要torch.no_grad()，因为generate_text方法已经处理了这个
+            generated = self.generate_text(prompt)
+            tprint(f"生成: {generated}")
         except Exception as e:
             tprint(f"生成文本时发生错误: {str(e)}")
             # 打印更详细的错误信息以便调试
