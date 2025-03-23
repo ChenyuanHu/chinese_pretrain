@@ -34,7 +34,7 @@ class ModuleConfig:
     # RoPE
     rope_theta: float = 500000.0
     use_scaled_rope: bool = True
-    use_block_checkpoint: bool = False
+    use_block_checkpoint: int = 10 # 使用梯度检查点的block层数
 
 from configs.data_sources import *
 

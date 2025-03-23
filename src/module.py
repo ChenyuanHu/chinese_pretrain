@@ -109,13 +109,14 @@ class MLP(nn.Module):
         return x
 
 class Block(nn.Module):
-    def __init__(self, config, rope):
+    def __init__(self, config, rope, id):
         super().__init__()
         self.ln_1 = nn.RMSNorm(config.n_embd)
         self.attn = CausalSelfAttention(config, rope)
         self.ln_2 = nn.RMSNorm(config.n_embd)
         self.mlp = MLP(config)
         self.use_checkpoint = config.use_block_checkpoint
+        self.id = id
 
     # 原始版本，没有显存优化
     def forward_without_checkpoint(self, x):
@@ -138,7 +139,7 @@ class Block(nn.Module):
         return x
 
     def forward(self, x):
-        if self.use_checkpoint:
+        if self.use_checkpoint > self.id:
             return self.forward_with_checkpoint(x)
         else:
             return self.forward_without_checkpoint(x)
@@ -157,7 +158,7 @@ class MyModule(nn.Module):
 
         self.transformer = nn.ModuleDict(dict(
             wte = nn.Embedding(config.vocab_size, config.n_embd),
-            h = nn.ModuleList([Block(config, self.rope) for _ in range(config.n_layer)]),
+            h = nn.ModuleList([Block(config, self.rope, i) for i in range(config.n_layer)]),
             ln_f = nn.RMSNorm(config.n_embd),
         ))
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
