@@ -86,10 +86,9 @@ class Trainer:
         self.data_loader.set_data_progress_percentage(progress_percentage)
         self.env.barrier()
 
-        if start_epoch > 0:
-            steps_done = start_epoch * self.train_config.steps_per_epoch
-            for _ in range(steps_done):
-                self.scheduler.step()
+        steps_done = start_epoch * self.train_config.steps_per_epoch
+        for _ in range(steps_done):
+            self.scheduler.step()
         tprint(f"lr scheduler 初始化完成")
 
         for epoch in range(start_epoch, self.train_config.num_epochs):
