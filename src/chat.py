@@ -10,7 +10,10 @@ from log import tprint
 
 class ChatBot:
     def __init__(self, train_config, module_config, train_data_config, checkpoint_path=None):
-        self.env = TorchrunEnv(force_cpu=True)
+        if self.checkpoint_path and self.checkpoint_path.endswith(".pt"):
+            self.env = TorchrunEnv(force_cpu=True)
+        else:
+            self.env = TorchrunEnv()
         tprint(f"env ready")
 
         model = MyModule(module_config)
@@ -38,16 +41,18 @@ class ChatBot:
         tprint(f"模型总大小: {total_params * 4 / (1024**2):.2f} MB")  # 假设每个参数是4字节（float32）
         
     def chat(self):
-        if not self.checkpoint_path:
-            tprint("未提供检查点路径，无法加载模型")
-            return
-            
         tprint(f"正在加载检查点: {self.checkpoint_path}")
-        checkpoint = torch.load(self.checkpoint_path, weights_only=True)
-        model_state_dict = checkpoint["app"]["model_state_dict"]
-        model_state_dict = {k.replace("_orig_mod.", ""): v for k, v in model_state_dict.items()}
 
-        self.model.load_state_dict(model_state_dict)
+        if self.checkpoint_path and self.checkpoint_path.endswith(".pt"):
+            checkpoint = torch.load(self.checkpoint_path, weights_only=True)
+            model_state_dict = checkpoint["app"]["model_state_dict"]
+            model_state_dict = {k.replace("_orig_mod.", ""): v for k, v in model_state_dict.items()}
+
+            self.model.load_state_dict(model_state_dict)
+        else:
+            self.checkpoint_manager = CheckpointManager(self.env, self.train_config)
+            tprint(f"检查点管理器初始化完成")
+            self.checkpoint_manager.try_load_checkpoint(self.model, None)
 
         for _ in range(10):
             self.text_generator.generate_examples()
