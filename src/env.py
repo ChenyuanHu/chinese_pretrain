@@ -74,8 +74,6 @@ class TorchrunEnv:
             self.model = model
             return self.model
 
-        # 定义自动包装策略，这个对显存节省非常有帮助****，省了近一半显存
-        # 但是它跟generate.py中的推理不兼容，跟模型编译也有一些兼容问题。pytorch版本2.5.1
         auto_wrap_policy = functools.partial(
             transformer_auto_wrap_policy,
             transformer_layer_cls={Block}
