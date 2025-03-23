@@ -179,7 +179,7 @@ class DCPCheckpointManager:
                 )
                 tprint(f"成功加载checkpoint，将从epoch {start_epoch} 继续训练")
                 self.last_save_epoch = start_epoch
-                progress_percentage = state_dict["app"].progress_percentage
+                progress_percentage = state_dict["app"]["progress_percentage"]
             except Exception as e:
                 tprint(f"使用dcp加载失败: {str(e)}, 退出")
                 exit()
