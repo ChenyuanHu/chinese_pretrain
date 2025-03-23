@@ -64,6 +64,11 @@ class PretrainConfig:
             "enabled": True,
             "data": open_math_instruct_2,
             "weight": 0.3
+        },
+        {
+            "enabled": True,
+            "data": fineweb_sample_10bt,
+            "weight": 3
         }
     ]
     
