@@ -15,7 +15,6 @@ class TextGenerator:
         self.top_k = train_data_config.top_k
         self.device = device
         self.amp = amp
-        tprint(f"{self.amp}")
 
     # 定义文本生成函数
     def generate_text(self, prompt):
@@ -30,7 +29,6 @@ class TextGenerator:
         
         tokens = torch.tensor(tokens, dtype=torch.long, device=self.device).unsqueeze(0)  # [1, seq_len]
         
-        tprint(f"{self.amp}")
         # 确保与模型使用相同的数据类型进行推理
         with self.amp:
             while tokens.size(1) < self.max_tokens:
