@@ -84,7 +84,7 @@ class ChatBot:
         tprint(f"可训练参数量(当前GPU): {trainable_params:,}")
         tprint(f"模型总大小(当前GPU): {total_params * 4 / (1024**2):.2f} MB")  # 假设每个参数是4字节（float32）
         
-    def train(self):
+    def chat(self):
         start_epoch, progress_percentage = self.checkpoint_manager.try_load_checkpoint(self.model, self.optimizer)
         self.data_loader.set_data_progress_percentage(progress_percentage)
         self.env.barrier()
