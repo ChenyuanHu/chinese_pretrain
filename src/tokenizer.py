@@ -60,9 +60,8 @@ class Tokenizer:
 
 # 大部分情况下按最大长度分块是OK的，小部分情况得退避
     def encode(self, text):
-        count = 0
         max_length = int(self.raw_tokenizer.model_max_length * 0.8)
-        return self.encode_split(text, max_length)
+        return self.encode_split(text, max_length)[1:]  # qwen-32b 分词器会多一个<｜begin▁of▁sentence｜>
 
 
 if __name__ == "__main__":
