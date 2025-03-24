@@ -17,7 +17,7 @@ class TrainConfig:
 # 模型参数
 class ModuleConfig:
     block_size: int = 1024
-    vocab_size: int = 128512  # 基础词表128000，加上特殊标记后为128512
+    vocab_size: int = 16384
     n_layer: int = 32
     n_head: int = 32
     n_embd: int = 1728
