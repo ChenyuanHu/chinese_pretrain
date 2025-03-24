@@ -1,11 +1,13 @@
 from log import tprint
 from transformers import AutoTokenizer
 
+# flagalpha/llama3-chinese-8b-instruct
+# deepseek-ai/deepseek-r1-distill-qwen-32b
 class Tokenizer:
-    def __init__(self):
+    def __init__(self, model_name="deepseek-ai/deepseek-r1-distill-qwen-32b"):
         # 使用 flagalpha/llama3-chinese-8b-instruct 的分词器
         tprint("正在加载分词器...")
-        self.raw_tokenizer = AutoTokenizer.from_pretrained("flagalpha/llama3-chinese-8b-instruct", trust_remote_code=True)
+        self.raw_tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
         
         # 添加特殊标记 <|im_start|> 和 <|im_end|>
         special_tokens_dict = {'additional_special_tokens': ['<|im_start|>', '<|im_end|>']}
