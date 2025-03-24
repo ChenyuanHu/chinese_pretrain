@@ -20,7 +20,7 @@ class TrainConfig:
 # 模型参数
 class ModuleConfig:
     block_size: int = 512
-    vocab_size: int = 16384
+    vocab_size: int = 152000
     n_layer: int = 16
     n_head: int = 16
     n_embd: int = 512
