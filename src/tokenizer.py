@@ -72,3 +72,6 @@ if __name__ == "__main__":
     # 测试新添加的特殊标记
     print(tokenizer.encode("<|im_start|>你好<|im_end|>"))
     print(tokenizer.decode(tokenizer.encode("<|im_start|>你好<|im_end|>")))
+
+    print(tokenizer.encode(tokenizer.bos_token + "你好" + tokenizer.eos_token))
+    print(tokenizer.decode(tokenizer.encode(tokenizer.bos_token + "你好" + tokenizer.eos_token)))
