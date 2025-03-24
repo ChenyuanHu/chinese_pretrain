@@ -23,6 +23,7 @@ class Tokenizer:
         self.eos_token = self.raw_tokenizer.eos_token
         self.eos_token_id = self.raw_tokenizer.eos_token_id
         tprint(f"bos_token: {self.bos_token} bos_token_id: {self.bos_token_id} eos_token: {self.eos_token} eos_token_id: {self.eos_token_id}")
+        tprint(f"tokenizer.model_max_length: {self.raw_tokenizer.model_max_length}")
         
         # 获取新添加的特殊标记的ID
         self.im_start_id = self.raw_tokenizer.convert_tokens_to_ids('<|im_start|>')
@@ -60,15 +61,8 @@ class Tokenizer:
 # 大部分情况下按最大长度分块是OK的，小部分情况得退避
     def encode(self, text):
         count = 0
-        max_length = 16384
-        while max_length > 1024:
-            count += 1
-            try:
-                return self.encode_split(text, max_length)
-            except Exception as _:
-                max_length //= 2
-                tprint(f"encode 失败, text length: {len(text)}, retry with max_length: {max_length}.")
-        assert False, f"encode 失败, text length: {len(text)}, text: {text}, count: {count}"
+        max_length = int(self.raw_tokenizer.model_max_length * 0.8)
+        return self.encode_split(text, max_length)
 
 
 if __name__ == "__main__":
