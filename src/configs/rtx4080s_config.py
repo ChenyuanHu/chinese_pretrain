@@ -15,7 +15,7 @@ class TrainConfig:
     save_dcp_checkpoint = False
     save_normal_checkpoint = True
 
-    compile = True
+    compile = "FULL"
 
 # 模型参数
 class ModuleConfig:
