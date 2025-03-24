@@ -28,11 +28,46 @@ class Tokenizer:
         self.im_start_id = self.raw_tokenizer.convert_tokens_to_ids('<|im_start|>')
         self.im_end_id = self.raw_tokenizer.convert_tokens_to_ids('<|im_end|>')
     
-    def encode(self, text):
-        return self.raw_tokenizer.encode(text)
-
     def decode(self, tokens):
         return self.raw_tokenizer.decode(tokens)
+
+# 有些分词器处理不了太长的序列，会报错
+# Token indices sequence length is longer than the specified maximum sequence length for this model (17692 > 16384). Running this sequence through the model will result in indexing errors
+# 不过这种分快处理没有考虑到边界情况下，拿到的分词不是最优的情况
+    def encode_split(self, text, max_length=16384):
+        if text is None:
+            raise ValueError("text is None")
+        
+        if len(text) <= max_length:
+            return self.raw_tokenizer.encode(text)
+
+        n_blocks = len(text) // max_length
+        last_n_chars = len(text) % max_length
+        
+        chunks = []
+        for i in range(n_blocks):
+            chunk = text[i * max_length:(i + 1) * max_length]
+            chunk_tokens = self.raw_tokenizer.encode(chunk)
+            chunks.extend(chunk_tokens)
+        
+        if last_n_chars > 0:
+            chunk = text[-last_n_chars:]
+            chunk_tokens = self.raw_tokenizer.encode(chunk)
+            chunks.extend(chunk_tokens)
+        
+        return chunks
+
+# 大部分情况下按最大长度分块是OK的，小部分情况得退避
+    def encode(self, text):
+        count = 0
+        max_length = 16384
+        while max_length > 1024:
+            count += 1
+            try:
+                return self.encode_split(text, max_length)
+            except Exception as _:
+                max_length //= 2
+        assert False, f"encode 失败, text length: {len(text)}, text: {text}, count: {count}"
 
 
 if __name__ == "__main__":

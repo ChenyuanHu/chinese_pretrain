@@ -29,35 +29,6 @@ class DataPreparer:
         self.text_fn = TextFnWrapper(source["text_fn"])
         self.file_path = os.path.join(self.cache_dir, f"{source['name']}.bin")
 
-# 有些分词器处理不了太长的序列，会报错
-# Token indices sequence length is longer than the specified maximum sequence length for this model (17692 > 16384). Running this sequence through the model will result in indexing errors
-# 不过这种分快处理没有考虑到边界情况下，拿到的分词不是最优的情况
-    def safe_encode(self, text):
-        # 最大的单批次token数量限制
-        max_length = 16384
-        
-        if text is None:
-            raise ValueError("text is None")
-        
-        if len(text) <= max_length:
-            return self.tokenizer.encode(text)
-
-        n_blocks = len(text) // max_length
-        last_n_chars = len(text) % max_length
-        
-        chunks = []
-        for i in range(n_blocks):
-            chunk = text[i * max_length:(i + 1) * max_length]
-            chunk_tokens = self.tokenizer.encode(chunk)
-            chunks.extend(chunk_tokens)
-        
-        if last_n_chars > 0:
-            chunk = text[-last_n_chars:]
-            chunk_tokens = self.tokenizer.encode(chunk)
-            chunks.extend(chunk_tokens)
-        
-        return chunks
-
     def _process_chunk(self, chunk_data, worker_id, temp_dir):
         """处理数据集的一个分片"""
         buffer_size = 10000000
@@ -74,7 +45,7 @@ class DataPreparer:
                 text = self.text_fn(item)
                 if text is None or text == "":
                     continue
-                encoded = self.safe_encode(text)
+                encoded = self.tokenizer.encode(text)
                 tokens = [self.tokenizer.bos_token_id] + encoded + [self.tokenizer.eos_token_id]
                 
                 token_buffer.extend(tokens)
