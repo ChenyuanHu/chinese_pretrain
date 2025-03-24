@@ -99,6 +99,9 @@ class Trainer:
 
         steps_done = start_epoch * self.train_config.steps_per_epoch
         for _ in range(steps_done):
+            # 创建一个空的优化器步骤
+            self.optimizer.zero_grad()
+            self.optimizer.step()
             self.scheduler.step()
         tprint(f"lr scheduler 初始化完成")
 
