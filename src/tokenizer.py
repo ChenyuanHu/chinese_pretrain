@@ -67,6 +67,7 @@ class Tokenizer:
                 return self.encode_split(text, max_length)
             except Exception as _:
                 max_length //= 2
+                tprint(f"encode 失败, text length: {len(text)}, retry with max_length: {max_length}.")
         assert False, f"encode 失败, text length: {len(text)}, text: {text}, count: {count}"
 
 
