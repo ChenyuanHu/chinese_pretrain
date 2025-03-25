@@ -13,3 +13,5 @@ templates
 checkpoints
 checkpoints_dcp
 .DS_Store
+tools/train.log
+tools/Note.md
