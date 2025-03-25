@@ -78,7 +78,11 @@ class Trainer:
             enabled=(self.env.device_type != 'cpu' and self.env.device_type != 'mps')
         )
 
-        if hasattr(train_config, "disable_text_generator") and train_config.disable_text_generator:
+        self.run_mode = "both" if not hasattr(train_config, "run_mode") else train_config.run_mode
+
+        assert self.run_mode in {"train", "generate", "both"}, f"run_mode must be 'train' or 'generate' or 'both'"
+
+        if self.run_mode == "train":
             self.text_generator = None
         else:
             self.text_generator = TextGenerator(self.model, module_config.block_size, train_data_config, device=self.env.device, amp=self.amp)
@@ -191,16 +195,21 @@ class Trainer:
         tprint(f"lr scheduler 初始化完成")
 
         for epoch in range(start_epoch, self.train_config.num_epochs):
-            self.train_one_epoch(epoch)
+            if self.run_mode == "train" or self.run_mode == "both":
+                self.train_one_epoch(epoch)
 
             self.env.barrier()
-            # 每个epoch结束后生成示例文本
-            if self.text_generator is not None:
+            if self.run_mode == "generate" or self.run_mode == "both":
+                # 每个epoch结束后生成示例文本
                 self.text_generator.generate_examples()
-                if self.train_config.compile:
-                    torch.compiler.reset()
-                gc.collect()
-                torch.cuda.empty_cache()
+
+                # 仅仅生成则不需要清除内存
+                if self.run_mode != "generate":
+                    if self.train_config.compile:
+                        torch.compiler.reset()
+                    gc.collect()
+                    torch.cuda.empty_cache()
+
             self.env.barrier()
 
     def cleanup(self):

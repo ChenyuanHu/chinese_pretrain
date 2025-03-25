@@ -13,6 +13,7 @@ class TrainConfig:
     save_normal_checkpoint = False
 
     compile = "FULL"
+    run_mode = "train" # train, generate, both
 
 # 模型参数
 class ModuleConfig:
