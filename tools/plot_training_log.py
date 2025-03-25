@@ -13,7 +13,7 @@ dataset_usage = {}
 throughputs = []  # For tokens/s
 epochs = []  # For epoch numbers
 
-with open('../src/experiments/logs/train_-1.log', 'r', encoding='utf-8') as f:
+with open('train.log', 'r', encoding='utf-8') as f:
     for line in f:
         # Extract timestamp, loss, perplexity, learning rate, throughput and epoch using regex
         match = re.search(r'(?:\[RANK:0\])?\[(.*?)\].*?Epoch \[(\d+)/\d+\].*?([\d.]+)sec.*?world ([\d.]+) tokens/s.*?(?:训练损失|loss): ([\d.]+).*?(?:困惑度|perplexity): ([\d.]+).*?LR: ([\d.e-]+)', line, re.IGNORECASE)
