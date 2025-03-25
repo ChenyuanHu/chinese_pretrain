@@ -344,3 +344,17 @@ if __name__ == "__main__":
         xs, _ = train_data_loader.next()
         tprint("="*80)
         tprint(f"xs: {tokenizer.decode(xs[0])}")
+
+    # 统计下样本里面的token频率, sample_num 为0则不统计
+    sample_num = 0
+    if sample_num > 0:
+        count_dict = {}
+        for _ in range(sample_num):
+            xs, _ = train_data_loader.next()
+            for x in xs:
+                for token in x:
+                    count_dict[token] = count_dict.get(token, 0) + 1
+        with open("count_dict.txt", "w") as f:
+            for k, v in sorted(count_dict.items(), key=lambda x: x[1], reverse=True):
+                f.write(f"{v} {int(k)} {tokenizer.decode(k)}\n")
+        

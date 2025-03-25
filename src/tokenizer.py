@@ -29,9 +29,6 @@ class Tokenizer:
     def encode(self, text):
         return self.raw_tokenizer.encode(text)[1:]  # qwen-32b 分词器会多一个<｜begin▁of▁sentence｜>
 
-    def tokenize(self, text):
-        return self.raw_tokenizer.tokenize(text)
-
     def dump(self):
         self.raw_tokenizer.save_pretrained("save_tokenizer")
 
@@ -50,5 +47,3 @@ if __name__ == "__main__":
 
     print(tokenizer.encode(tokenizer.bos_token + "你好" + tokenizer.eos_token))
     print(tokenizer.decode(tokenizer.encode(tokenizer.bos_token + "你好" + tokenizer.eos_token)))
-
-    tokenizer.dump()

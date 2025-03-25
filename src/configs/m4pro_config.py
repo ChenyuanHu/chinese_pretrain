@@ -11,7 +11,7 @@ class TrainConfig:
     steps_per_epoch = 200  # 每个epoch训练多少批次
 
     # checkpoint config
-    save_interval_sec = 1800  # 每n秒保存一次模型
+    save_interval_sec = 180  # 每n秒保存一次模型
     save_dcp_checkpoint = False
     save_normal_checkpoint = True
 
