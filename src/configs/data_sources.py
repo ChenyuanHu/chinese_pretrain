@@ -91,7 +91,7 @@ def sft_r1_distill_ds_fn():
     return load_dataset("Congliu/Chinese-DeepSeek-R1-Distill-data-110k-SFT", data_dir=None, split="train")
 
 def sft_r1_distill_text_fn(x):
-    return "<|im_start|>用户\n" + x["instruction"] + "\n<|im_end|>\n<|im_start|>助手\n" + x["output"] + "\n<|im_end|>"
+    return "<｜User｜>" + x["instruction"] + "<<｜Assistant｜>" + x["output"]
 
 sft_r1_distill = {
     "name": "sft_r1_distill",
