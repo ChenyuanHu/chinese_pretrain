@@ -26,7 +26,7 @@ class ModuleConfig:
     n_embd: int = 512
     n_kv_head: int = 8
     # flash attention. 可选值为 "FLASH_ATTENTION|EFFICIENT_ATTENTION|MATH|CUDNN_ATTENTION", 用竖线多选，为空禁用
-    flash_attn: str = ""
+    flash_attn: str = "MATH"
     # amp
     dtype = "bfloat16"
     # MLP

@@ -22,7 +22,7 @@ class DataPreparer:
         self.num_workers = num_workers if num_workers is not None else max(1, mp.cpu_count() - 2)
 
         self.text_fn = TextFnWrapper(source["text_fn"])
-        self.file_path = os.path.join(self.cache_dir, f"{source['name']}.bin")
+        self.file_path = os.path.join(self.cache_dir, f"{source['name']}_padding.bin")
 
         self.bucket = None
 
@@ -46,10 +46,6 @@ class DataPreparer:
                 bucket[length] = []
             bucket[length].append(tokens)
         self.bucket = bucket
-        # 打印bucket信息
-        tprint(f"数据分桶信息:")
-        for length in sorted(bucket.keys()):
-            tprint(f"  长度 {length}: {len(bucket[length])} 个样本")
     
     def preprocess_to_file(self):
         # 确保目录存在
