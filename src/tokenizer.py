@@ -13,14 +13,20 @@ class Tokenizer:
         self.bos_token_id = self.raw_tokenizer.bos_token_id
         self.eos_token = self.raw_tokenizer.eos_token
         self.eos_token_id = self.raw_tokenizer.eos_token_id
-        tprint(f"bos_token: {self.bos_token} bos_token_id: {self.bos_token_id} eos_token: {self.eos_token} eos_token_id: {self.eos_token_id}")
-        tprint(f"tokenizer.model_max_length: {self.raw_tokenizer.vocab_size}")
         
         self.user_token = '<｜User｜>'
         self.assistant_token = '<｜Assistant｜>'
         self.user_token_id = self.raw_tokenizer.convert_tokens_to_ids(self.user_token)
         self.assistant_token_id = self.raw_tokenizer.convert_tokens_to_ids(self.assistant_token)
-    
+        self.pad_token = self.raw_tokenizer.pad_token
+        self.pad_token_id = self.raw_tokenizer.convert_tokens_to_ids(self.pad_token)
+
+        tprint(f"bos_token: {self.bos_token} bos_token_id: {self.bos_token_id} eos_token: {self.eos_token} eos_token_id: {self.eos_token_id}")
+        tprint(f"pad_token: {self.pad_token} pad_token_id: {self.pad_token_id}")
+        tprint(f"user_token: {self.user_token} user_token_id: {self.user_token_id}")
+        tprint(f"assistant_token: {self.assistant_token} assistant_token_id: {self.assistant_token_id}")
+        tprint(f"tokenizer.model_max_length: {self.raw_tokenizer.vocab_size}")
+
     def decode(self, tokens):
         return self.raw_tokenizer.decode(tokens)
 
