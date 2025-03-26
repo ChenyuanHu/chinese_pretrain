@@ -287,9 +287,9 @@ class MixTrainDataLoader:
             for name, loader in self.train_data_loaders.items():
                 # 如果在JSON中找到对应的数据集进度，则使用它
                 # 否则默认为0
-                progress = progress_data.get(name, 0)
+                progress = progress_data.get(name+".padding", 0)
                 loader.set_data_progress_percentage(progress)
-                tprint(f"为数据集 {name} 设置进度: {progress}")
+                tprint(f"为数据集 {name+'.padding'} 设置进度: {progress}")
         except (json.JSONDecodeError, ValueError):
             # 如果输入不是有效的JSON，将所有进度设为0
             tprint(f"无效的进度JSON字符串，将所有数据集进度重置为0")
@@ -301,7 +301,7 @@ class MixTrainDataLoader:
         import json
         progress_data = {}
         for name, loader in self.train_data_loaders.items():
-            progress_data[name] = loader.get_data_progress_percentage()
+            progress_data[name+".padding"] = loader.get_data_progress_percentage()
             
         # 将进度数据转换为JSON字符串并返回
         return json.dumps(progress_data)
