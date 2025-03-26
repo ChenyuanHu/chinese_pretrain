@@ -77,8 +77,8 @@ class DataPreparer:
                 encoded_samples = []
                 
                 # 使用迭代器获取结果，这样可以在处理完成后立即获取结果
-                for encoded_samples in pool.starmap(self._process_chunk, [(chunk, i) for i, chunk in enumerate(chunks)]):
-                    encoded_samples.extend(encoded_samples)
+                for tmp_encoded_samples in pool.starmap(self._process_chunk, [(chunk, i) for i, chunk in enumerate(chunks)]):
+                    encoded_samples.extend(tmp_encoded_samples)
             
         # 合并所有临时文件
         tprint(f"分析处理样本")
@@ -94,7 +94,8 @@ class MixTrainDataLoader:
         self.loader_names = []
         self.loader_weights = []
         self.cache_dir = cache_dir
-        self.block_size = (block_size + 1) * batch_size
+        self.block_size = block_size
+        self.batch_token_size = (self.block_size + 1) * batch_size
 
         self.tokenizer = Tokenizer()
 
@@ -102,76 +103,62 @@ class MixTrainDataLoader:
         data_preparer.preprocess_to_file()
         self.data_preparer = data_preparer
 
-        self.bucket = self.data_preparer.bucket
-        self.iterator = self.iter()
+        self.samples = self.reblock(self.data_preparer.bucket)
+        self.iterator = self.__iter__()
+
+    # 确保所有大于block_size + 1的样本都被切分
+    def reblock(self, bucket):
+        samples = []
+        # 因为有x=[:-1], y=[1:], 所以需要+1
+        raw_tokens_size = self.block_size + 1
+        for length in sorted(bucket.keys()):
+            if length <= raw_tokens_size:
+                for tokens in bucket[length]:
+                    samples.append(tokens)
+            else:
+                tokenss = bucket[length]
+                for tokens in tokenss:
+                    last_end = 0
+                    # 滑动窗口切分长样本, 重叠区域为10%
+                    for start in range(0, len(tokens) - raw_tokens_size, int(raw_tokens_size * 0.9)):
+                        # 提取当前窗口
+                        last_end = start + raw_tokens_size
+                        window = tokens[start:last_end]
+                        samples.append(window)
+                    
+                    # 处理最后一个窗口（如果需要）
+                    if last_end < len(tokens):
+                        last_window = tokens[-raw_tokens_size:]
+                        samples.append(last_window)  # 将last_window包装在列表中
+
+        return samples
+
 
     def inter_iter(self):
         # 获取所有长度并排序
-        sorted_lengths = sorted(self.bucket.keys())
         samples = []
-        for length in sorted_lengths:
-            tokenss = self.bucket[length]
-            for tokens in tokenss:
-                if len(tokens) * (len(samples) + 1) > self.block_size:
-                    yield samples
-                    samples = []
-                samples.append(tokens)
+        for tokens in self.samples:
+            if (len(tokens) - 1) * (len(samples) + 1) >= self.batch_token_size:
+                yield samples
+                samples = []
+            samples.append(tokens)
         if len(samples) > 0:
             yield samples
     
-    def iter(self):
-        inter_iter = self.inter_iter()
-
-        for xs in inter_iter:
-            assert len(xs) > 0, "len(xs) == 0"
-            
-            # 检查是否有单个样本长度超过block_size
-            if len(xs[0]) > self.block_size:
-                # 确保xs只有一个超长样本
-                assert len(xs) == 1, "超长样本批次应该只包含一个样本"
-                
-                # 计算stride（步长），重叠区域为10%
-                stride = int(self.block_size * 0.9)
-                tokens = xs[0]
-                
-                last_end = 0
-                # 滑动窗口切分长样本
-                for start in range(0, len(tokens) - self.block_size + 1, stride):
-                    # 提取当前窗口
-                    last_end = start + self.block_size
-                    window = tokens[start:last_end]
-                    yield [window]  # 将window包装在列表中，保持一致的返回格式
-                
-                # 处理最后一个窗口（如果需要）
-                if last_end < len(tokens):
-                    last_window = tokens[-self.block_size:]
-                    yield [last_window]  # 将last_window包装在列表中
-                
-            else:
-                yield xs
-
     def next(self):
-        xs = next(self.iterator)
-        xs_out = []
-        ys_out = []
-        length = len(xs[-1])
-        for i in range(len(xs)):
-            if len(xs[i]) != length:
-                xs[i].extend([self.tokenizer.eos_token_id] * (length - len(xs[i])))
-            xs_out.append(xs[i][:-1])
-            ys_out.append(xs[i][1:])
-
-        # tprint(f"batch_size: {len(xs_out)}, sample_len: {len(xs_out[0])}, all_len: {len(xs_out) * len(xs_out[0])}")
-        return xs_out, ys_out
+        return next(self.iterator)
 
     def __iter__(self):
-        for xs in self.iter():
+        for xs in self.inter_iter():
+            xs_out = []
+            ys_out = []
             length = len(xs[-1])
             for i in range(len(xs)):
                 if len(xs[i]) != length:
-                    xs[i].extend([self.tokenizer.eos_token_id] * (length - len(xs[i])))
-            yield xs
-
+                    xs[i].extend([self.tokenizer.pad_token_id] * (length - len(xs[i])))
+                xs_out.append(xs[i][:-1])
+                ys_out.append(xs[i][1:])
+            yield xs_out, ys_out
 
     def set_data_progress_percentage(self, progress_percentage):
         pass
@@ -180,22 +167,18 @@ class MixTrainDataLoader:
         return "{}"
 
 if __name__ == "__main__":
-    block_size = 1024
-    mix_train_data_loader = MixTrainDataLoader(world_size=1, rank=0, local_rank=0, batch_size=1, block_size=block_size, cache_dir="./dataset_cache")
-    
-    print("\n按长度从小到大遍历数据：")
-    print("-" * 50)
+    mix_train_data_loader = MixTrainDataLoader(world_size=1, rank=0, local_rank=0, batch_size=8, block_size=512, cache_dir="./dataset_cache")
     
     token_count = 0
     pad_count = 0
-    for xs in mix_train_data_loader:
-        print(len(xs), len(xs[0]), len(xs) * len(xs[0]))
+    for xs, _ in mix_train_data_loader:
+        tprint(len(xs), len(xs[0]), len(xs) * len(xs[0]))
         for x in xs:
             for token in x:
                 if token == mix_train_data_loader.tokenizer.pad_token_id:
                     pad_count += 1
                 token_count += 1
-        print("-" * 50)
+        tprint("-" * 50)
 
-    print(f"token_count: {token_count}, pad_count: {pad_count}")
-    print(f"pad_ratio: {pad_count / token_count}")
+    tprint(f"token_count: {token_count}, pad_count: {pad_count}")
+    tprint(f"pad_ratio: {pad_count / token_count}")
