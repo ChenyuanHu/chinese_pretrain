@@ -38,7 +38,7 @@ class DataPreparer:
             encoded_samples.append(tokens)
 
             if time.time() - last_time > 30:
-                tprint(f"处理 {len(encoded_samples)} 个样本, 进度 {len(encoded_samples) / total_tokens * 100}%")
+                tprint(f"处理 {len(encoded_samples)} 个样本, 进度 {len(encoded_samples) / total_tokens * 100:.2f}%")
                 last_time = time.time()
 
         return encoded_samples
