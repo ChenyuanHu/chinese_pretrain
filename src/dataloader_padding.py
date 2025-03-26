@@ -3,7 +3,7 @@ from log import tprint
 import multiprocessing as mp
 import pickle
 import random
-
+import time
 from config import PretrainConfig, SftConfig, TrainDataConfig
 from tokenizer import Tokenizer
 
@@ -27,6 +27,8 @@ class DataPreparer:
 
     def _process_chunk(self, chunk_data):
         encoded_samples = []
+        last_time = time.time()
+        total_tokens = len(chunk_data)
         for item in chunk_data:
             text = self.text_fn(item)
             if text is None or text == "":
@@ -34,6 +36,10 @@ class DataPreparer:
             encoded = self.tokenizer.encode(text)
             tokens = [self.tokenizer.bos_token_id] + encoded + [self.tokenizer.eos_token_id]
             encoded_samples.append(tokens)
+
+            if time.time() - last_time > 30:
+                tprint(f"处理 {len(encoded_samples)} 个样本, 进度 {len(encoded_samples) / total_tokens * 100}%")
+                last_time = time.time()
 
         return encoded_samples
 
