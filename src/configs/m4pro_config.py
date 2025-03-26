@@ -78,6 +78,7 @@ from configs.case_prompts import *
 class TrainDataConfig:
     data = PretrainConfig()
     case_prompts = pretrain_case_prompts
+    dataloader_mode = "packing"   # 可选值为 "padding" 或 "packing"
 
     # 生成样例配置
     max_tokens = 100

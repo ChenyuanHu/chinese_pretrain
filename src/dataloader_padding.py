@@ -247,7 +247,8 @@ class TrainDataLoader:
         return position_percentage + self.data_epoch * 100
 
 class MixTrainDataLoader:
-    def __init__(self, world_size, rank, batch_size, block_size, cache_dir="./dataset_cache/padding"):
+    def __init__(self, world_size, rank, local_rank, batch_size, block_size, cache_dir="./dataset_cache/padding"):
+        _ = local_rank
         self.train_data_loaders = {}
         self.loader_names = []
         self.loader_weights = []

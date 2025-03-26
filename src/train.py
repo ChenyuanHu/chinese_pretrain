@@ -5,13 +5,17 @@ import time
 import random
 from env import TorchrunEnv
 from module import MyModule
-from dataloader import MixTrainDataLoader
 from generate import TextGenerator
 from checkpoint import CheckpointManager
 from eval import EvaluateRunner
 from config import TrainConfig, ModuleConfig, TrainDataConfig
 from log import tprint
 import gc
+
+if TrainDataConfig().dataloader_mode == "padding":
+    from dataloader_padding import MixTrainDataLoader
+else:
+    from dataloader import MixTrainDataLoader
 
 torch._dynamo.config.cache_size_limit = 64  # 默认是8
 
