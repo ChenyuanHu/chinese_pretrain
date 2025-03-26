@@ -16,14 +16,13 @@ class TextFnWrapper:
         return self.fn(x)
 
 class DataPreparer:
-    def __init__(self, source, tokenizer, cache_dir="./dataset_cache/padding", num_workers=None):
+    def __init__(self, source, tokenizer, cache_dir="./dataset_cache", num_workers=None):
         self.source = source
         self.tokenizer = tokenizer
-        self.cache_dir = cache_dir
+        self.cache_dir = os.path.join(cache_dir, f"{source['name']}_padding")
         self.num_workers = num_workers if num_workers is not None else max(1, mp.cpu_count() - 2)
 
         self.text_fn = TextFnWrapper(source["text_fn"])
-        self.file_path_prefix = os.path.join(self.cache_dir, f"{source['name']}_padding_")
 
     def _process_chunk(self, chunk_data, worker_id):
         encoded_samples = []
@@ -41,18 +40,42 @@ class DataPreparer:
                 tprint(f"Worker {worker_id}: 处理 {len(encoded_samples)} 个样本, 进度 {len(encoded_samples) / total_tokens * 100:.2f}%")
                 last_time = time.time()
 
-        return encoded_samples
+        # 在进程内直接处理和存储数据
+        tprint(f"Worker {worker_id}: 开始存储数据")
+        
+        # 创建bucket字典，按长度分组
+        bucket = {}
+        for tokens in encoded_samples:
+            length = len(tokens)
+            if length not in bucket:
+                bucket[length] = []
+            bucket[length].append(tokens)
+        
+        # 确保目录存在
+        os.makedirs(self.cache_dir, exist_ok=True)
+        
+        # 保存处理后的数据到二进制文件
+        file_path = os.path.join(self.cache_dir, f"{worker_id}.bin")
+        with open(file_path, 'wb') as f:
+            pickle.dump(bucket, f)
+        
+        tprint(f"Worker {worker_id}: 数据处理完毕，已保存到文件: {file_path}")
+        return file_path
 
     def preprocess_to_file(self):
         # 检查是否已经生成过数据文件
-        first_file_path = self.file_path_prefix + "0.bin"
+        first_file_path = os.path.join(self.cache_dir, "0.bin")
         if os.path.exists(first_file_path):
             tprint(f"数据集 {self.source['name']} 已经处理过，直接使用现有文件")
-            file_paths = [self.file_path_prefix + f"{i}.bin" for i in range(64)]
+            # 查找目录中的所有.bin文件
+            file_paths = []
+            for file_name in os.listdir(self.cache_dir):
+                if file_name.endswith('.bin'):
+                    file_paths.append(os.path.join(self.cache_dir, file_name))
             return file_paths
             
         # 确保目录存在
-        os.makedirs(os.path.dirname(self.file_path_prefix), exist_ok=True)
+        os.makedirs(self.cache_dir, exist_ok=True)
 
         tprint(f"正在加载数据集: {self.source['name']}...")
         raw_dataset = self.source["ds_fn"]()
@@ -63,7 +86,8 @@ class DataPreparer:
         if num_workers <= 1:
             # 如果只有一个工作进程或数据集很小，使用单进程处理
             tprint(f"使用单进程处理数据集")
-            encoded_samples = self._process_chunk(raw_dataset, 0)
+            file_path = self._process_chunk(raw_dataset, 0)
+            return [file_path]
         else:
             # 将数据集分成多个块
             chunk_size = len(raw_dataset) // num_workers
@@ -77,47 +101,13 @@ class DataPreparer:
             
             # 创建进程池并并行处理数据
             with mp.Pool(processes=num_workers) as pool:
-                encoded_samples = []
+                file_paths = pool.starmap(self._process_chunk, [(chunk, i) for i, chunk in enumerate(chunks)])
                 
-                # 使用迭代器获取结果，这样可以在处理完成后立即获取结果
-                for tmp_encoded_samples in pool.starmap(self._process_chunk, [(chunk, i) for i, chunk in enumerate(chunks)]):
-                    encoded_samples.extend(tmp_encoded_samples)
-
-        tprint(f"开始存储数据")
-        # 随机打乱编码样本并分成64份
-        random.shuffle(encoded_samples)
-        
-        num_files = 64
-        samples_per_file = len(encoded_samples) // num_files
-        
-        file_paths = []
-        
-        # 分成64个文件存储
-        for i in range(num_files):
-            start_idx = i * samples_per_file
-            end_idx = start_idx + samples_per_file if i < num_files - 1 else len(encoded_samples)
-            file_samples = encoded_samples[start_idx:end_idx]
-            
-            # 创建bucket字典，按长度分组
-            bucket = {}
-            for tokens in file_samples:
-                length = len(tokens)
-                if length not in bucket:
-                    bucket[length] = []
-                bucket[length].append(tokens)
-            
-            # 保存处理后的数据到二进制文件
-            file_path = self.file_path_prefix + f"{i}.bin"
-            with open(file_path, 'wb') as f:
-                pickle.dump(bucket, f)
-            
-            file_paths.append(file_path)
-            
-        tprint(f"数据集预处理完毕，已保存到64个文件: {self.file_path_prefix}[0-63].bin")
+        tprint(f"数据集预处理完毕，已保存到 {len(file_paths)} 个文件: {self.cache_dir}")
         return file_paths
 
 class TrainDataLoader:
-    def __init__(self, source, world_size, rank, batch_size, block_size, tokenizer, cache_dir="./dataset_cache/padding"):
+    def __init__(self, source, world_size, rank, batch_size, block_size, tokenizer, cache_dir="./dataset_cache"):
         self.world_size = world_size
         self.rank = rank
         self.batch_size = batch_size
@@ -125,7 +115,7 @@ class TrainDataLoader:
         self.batch_token_size = (self.block_size + 1) * batch_size
         self.source = source
         self.tokenizer = tokenizer
-        self.file_path_prefix = os.path.join(cache_dir, f"{source['name']}_padding_")
+        self.cache_dir = os.path.join(cache_dir, f"{source['name']}_padding")
         self.samples = self.init_samples()
         self.iterator = self.__iter__()
         
@@ -137,20 +127,33 @@ class TrainDataLoader:
     def load_data(self):
         tprint(f"进程 {self.rank}/{self.world_size} 开始加载数据")
         
+        # 检查目录中的文件数量
+        if not os.path.exists(self.cache_dir):
+            tprint(f"错误：数据目录 {self.cache_dir} 不存在！")
+            return {}
+            
+        # 获取目录中所有的.bin文件
+        bin_files = [f for f in os.listdir(self.cache_dir) if f.endswith('.bin')]
+        bin_files.sort(key=lambda x: int(x.split('.')[0]))  # 按数字顺序排序
+        total_files = len(bin_files)
+        
+        if total_files == 0:
+            tprint(f"错误：数据目录 {self.cache_dir} 中没有找到.bin文件！")
+            return {}
+        
         # 计算当前进程需要处理的文件索引
-        total_files = 64
         files_per_rank = total_files // self.world_size
         start_file_idx = self.rank * files_per_rank
         end_file_idx = start_file_idx + files_per_rank if self.rank < self.world_size - 1 else total_files
         
-        # 记录此进程处理的文件编号
-        my_file_indices = list(range(start_file_idx, end_file_idx))
-        tprint(f"进程 {self.rank} 负责处理文件: {my_file_indices}")
+        # 记录此进程处理的文件
+        my_files = bin_files[start_file_idx:end_file_idx]
+        tprint(f"进程 {self.rank} 负责处理文件: {my_files}")
         
         # 加载数据
         merged_bucket = {}
-        for file_idx in my_file_indices:
-            file_path = self.file_path_prefix + f"{file_idx}.bin"
+        for file_name in my_files:
+            file_path = os.path.join(self.cache_dir, file_name)
             try:
                 with open(file_path, 'rb') as f:
                     bucket = pickle.load(f)
@@ -253,7 +256,7 @@ class TrainDataLoader:
         return position_percentage + self.data_epoch * 100
 
 class MixTrainDataLoader:
-    def __init__(self, world_size, rank, local_rank, batch_size, block_size, cache_dir="./dataset_cache/padding"):
+    def __init__(self, world_size, rank, local_rank, batch_size, block_size, cache_dir="./dataset_cache"):
         _ = local_rank
         self.train_data_loaders = {}
         self.loader_names = []
@@ -322,7 +325,7 @@ if __name__ == "__main__":
             continue
         data_preparer = DataPreparer(source["data"], tokenizer)
         file_paths = data_preparer.preprocess_to_file()
-        tprint(f"预处理完成: {source['data']['name']}, 文件保存在: {file_paths}")
+        tprint(f"预处理完成: {source['data']['name']}, 文件保存在: {data_preparer.cache_dir}")
     
     # 预处理SFT数据集
     for source in SftConfig.datasets:
@@ -330,10 +333,10 @@ if __name__ == "__main__":
             continue
         data_preparer = DataPreparer(source["data"], tokenizer)
         file_paths = data_preparer.preprocess_to_file()
-        tprint(f"预处理完成: {source['data']['name']}, 文件保存在: {file_paths}")
+        tprint(f"预处理完成: {source['data']['name']}, 文件保存在: {data_preparer.cache_dir}")
 
     # 测试数据加载
-    train_data_loader = MixTrainDataLoader(world_size=1, rank=0, batch_size=1, block_size=1024)
+    train_data_loader = MixTrainDataLoader(world_size=1, rank=0, local_rank=0, batch_size=1, block_size=1024)
     tprint("打印10个case检查一下")
     for _ in range(10):
         xs, ys = train_data_loader.next()
