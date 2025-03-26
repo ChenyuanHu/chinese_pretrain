@@ -25,41 +25,43 @@ class DataPreparer:
         self.text_fn = TextFnWrapper(source["text_fn"])
 
     def _process_chunk(self, chunk_data, worker_id):
-        encoded_samples = []
         last_time = time.time()
         total_tokens = len(chunk_data)
-        for item in chunk_data:
-            text = self.text_fn(item)
-            if text is None or text == "":
-                continue
-            encoded = self.tokenizer.encode(text)
-            tokens = [self.tokenizer.bos_token_id] + encoded + [self.tokenizer.eos_token_id]
-            encoded_samples.append(tokens)
-
-            if time.time() - last_time > 30:
-                tprint(f"Worker {worker_id}: 处理 {len(encoded_samples)} 个样本, 进度 {len(encoded_samples) / total_tokens * 100:.2f}%")
-                last_time = time.time()
-
-        # 在进程内直接处理和存储数据
-        tprint(f"Worker {worker_id}: 开始存储数据")
-        
-        # 创建bucket字典，按长度分组
-        bucket = {}
-        for tokens in encoded_samples:
-            length = len(tokens)
-            if length not in bucket:
-                bucket[length] = []
-            bucket[length].append(tokens)
+        processed_count = 0
         
         # 确保目录存在
         os.makedirs(self.cache_dir, exist_ok=True)
         
-        # 保存处理后的数据到二进制文件
+        # 直接写入到文件，不进行分桶处理
         file_path = os.path.join(self.cache_dir, f"{worker_id}.bin")
         with open(file_path, 'wb') as f:
-            pickle.dump(bucket, f)
+            # 创建一个token列表
+            tokens_list = []
+            
+            for item in chunk_data:
+                text = self.text_fn(item)
+                if text is None or text == "":
+                    continue
+                    
+                encoded = self.tokenizer.encode(text)
+                tokens = [self.tokenizer.bos_token_id] + encoded + [self.tokenizer.eos_token_id]
+                tokens_list.append(tokens)
+                processed_count += 1
+                
+                # 每处理一定数量的样本就写入文件一次，避免占用太多内存
+                if len(tokens_list) >= 1000:
+                    pickle.dump(tokens_list, f)
+                    tokens_list = []
+                
+                if time.time() - last_time > 30:
+                    tprint(f"Worker {worker_id}: 处理 {processed_count} 个样本, 进度 {processed_count / total_tokens * 100:.2f}%")
+                    last_time = time.time()
+            
+            # 写入剩余的token列表
+            if tokens_list:
+                pickle.dump(tokens_list, f)
         
-        tprint(f"Worker {worker_id}: 数据处理完毕，已保存到文件: {file_path}")
+        tprint(f"Worker {worker_id}: 数据处理完毕，已保存到文件: {file_path}, 总共处理 {processed_count} 个样本")
         return file_path
 
     def preprocess_to_file(self):
@@ -156,13 +158,19 @@ class TrainDataLoader:
             file_path = os.path.join(self.cache_dir, file_name)
             try:
                 with open(file_path, 'rb') as f:
-                    bucket = pickle.load(f)
-                    
-                # 合并bucket
-                for length, tokens_list in bucket.items():
-                    if length not in merged_bucket:
-                        merged_bucket[length] = []
-                    merged_bucket[length].extend(tokens_list)
+                    # 读取文件内容，可能包含多个token列表
+                    while True:
+                        try:
+                            tokens_list = pickle.load(f)
+                            # 将token列表中的每个token添加到对应的bucket中
+                            for tokens in tokens_list:
+                                length = len(tokens)
+                                if length not in merged_bucket:
+                                    merged_bucket[length] = []
+                                merged_bucket[length].append(tokens)
+                        except EOFError:
+                            # 到达文件末尾
+                            break
                 
                 tprint(f"进程 {self.rank} 成功加载文件: {file_path}")
             except Exception as e:
