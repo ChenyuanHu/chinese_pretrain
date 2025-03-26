@@ -25,7 +25,7 @@ class DataPreparer:
         self.text_fn = TextFnWrapper(source["text_fn"])
         self.file_path_prefix = os.path.join(self.cache_dir, f"{source['name']}_padding_")
 
-    def _process_chunk(self, chunk_data):
+    def _process_chunk(self, chunk_data, worker_id):
         encoded_samples = []
         last_time = time.time()
         total_tokens = len(chunk_data)
@@ -38,7 +38,7 @@ class DataPreparer:
             encoded_samples.append(tokens)
 
             if time.time() - last_time > 30:
-                tprint(f"处理 {len(encoded_samples)} 个样本, 进度 {len(encoded_samples) / total_tokens * 100:.2f}%")
+                tprint(f"Worker {worker_id}: 处理 {len(encoded_samples)} 个样本, 进度 {len(encoded_samples) / total_tokens * 100:.2f}%")
                 last_time = time.time()
 
         return encoded_samples
@@ -80,7 +80,7 @@ class DataPreparer:
                 encoded_samples = []
                 
                 # 使用迭代器获取结果，这样可以在处理完成后立即获取结果
-                for tmp_encoded_samples in pool.starmap(self._process_chunk, [(chunk,) for chunk in chunks]):
+                for tmp_encoded_samples in pool.starmap(self._process_chunk, [(chunk, i) for i, chunk in enumerate(chunks)]):
                     encoded_samples.extend(tmp_encoded_samples)
 
         tprint(f"开始存储数据")
