@@ -166,8 +166,27 @@ class DataMapper:
                 self.num_tokens = self.file_size // self.bytes_per_token
                 
                 # 打开文件并创建内存映射
+                self.fd = os.open(filename, os.O_RDONLY)
+                # 尝试使用posix_fadvise，如果系统支持的话
+                try:
+                    if hasattr(os, 'posix_fadvise') and hasattr(os, 'POSIX_FADV_SEQUENTIAL'):
+                        tprint(f"使用posix_fadvise(os.POSIX_FADV_SEQUENTIAL)")
+                        os.posix_fadvise(self.fd, 0, 0, os.POSIX_FADV_SEQUENTIAL)
+                except (AttributeError, OSError):
+                    # macOS等系统可能不支持posix_fadvise
+                    pass
+
                 self.file = open(filename, 'rb')
-                self.mm = mmap.mmap(self.file.fileno(), 0, access=mmap.ACCESS_READ)
+                self.mm = mmap.mmap(self.fd, 0, access=mmap.ACCESS_READ)
+                
+                # 尝试使用madvise，如果系统支持的话
+                try:
+                    if hasattr(mmap, 'MADV_SEQUENTIAL'):
+                        tprint(f"使用madvise(mmap.MADV_SEQUENTIAL)")
+                        self.mm.madvise(mmap.MADV_SEQUENTIAL)
+                except (AttributeError, OSError):
+                    # 某些系统可能不支持madvise或MADV_SEQUENTIAL
+                    pass
                 
             def __getitem__(self, idx):
                 if isinstance(idx, slice):
@@ -197,6 +216,8 @@ class DataMapper:
                     self.mm.close()
                 if hasattr(self, 'file') and self.file:
                     self.file.close()
+                if hasattr(self, 'fd'):
+                    os.close(self.fd)
                     
         return MemoryMappedTokens(self.file_path)
 
