@@ -106,12 +106,12 @@ class RoPEv2:
         freqs = torch.outer(t, self.base_freqs)
         return torch.cos(freqs).view(T, -1), torch.sin(freqs).view(T, -1)
 
+    @torch.no_grad()
     def apply_rotary_emb_warp(self, xq: torch.Tensor, xk: torch.Tensor):
         B, T, H, D = xq.shape
         device, dtype = xq.device, xq.dtype
 
-        with torch.amp.autocast(device_type=device.type, enabled=False):  # 禁用自动转换，手动管理类型
-            cos, sin = self._get_cos_sin(T, device, dtype)
+        cos, sin = self._get_cos_sin(T, device, dtype)
         
         # 扩展维度并广播到完整D维
         cos = cos.unsqueeze(0).unsqueeze(2).repeat_interleave(2, dim=-1)  # [1, T, 1, D]
