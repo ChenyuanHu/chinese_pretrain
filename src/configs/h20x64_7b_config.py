@@ -13,7 +13,7 @@ class TrainConfig:
     save_normal_checkpoint = False
 
     compile = "FULL"
-    full_shard = True
+    full_shard = False
     run_mode = "train" # train, generate, both
 
 
