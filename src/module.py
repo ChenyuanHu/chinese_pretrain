@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.attention import SDPBackend, sdpa_kernel
 from torch.utils.checkpoint import checkpoint
-from rope import RoPE
+from rope import RoPEv2 as RoPE
 
 class CausalSelfAttention(nn.Module):
     def __init__(self, config, rope):
