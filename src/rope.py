@@ -111,7 +111,8 @@ class RoPEv2:
         B, T, H, D = xq.shape
         device, dtype = xq.device, xq.dtype
 
-        cos, sin = self._get_cos_sin(T, device, dtype)
+        with torch.amp.autocast(device_type=device.type, enabled=False):  # 禁用自动转换，手动管理类型
+            cos, sin = self._get_cos_sin(T, device, dtype)
         
         # 扩展维度并广播到完整D维
         cos = cos.unsqueeze(0).unsqueeze(2).repeat_interleave(2, dim=-1)  # [1, T, 1, D]
