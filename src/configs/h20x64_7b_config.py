@@ -1,7 +1,7 @@
 # 训练循环
 class TrainConfig:
-    batch_size = 1
-    gradient_accumulation_steps = 4  # 梯度累积步数
+    batch_size = 6
+    gradient_accumulation_steps = 1  # 梯度累积步数
 
     num_epochs = 10000 # 一般不结束
     scheduler_epochs = 100 # 调度器预期训练收敛需要的epoch数
@@ -13,7 +13,7 @@ class TrainConfig:
     save_normal_checkpoint = False
 
     compile = "FULL"
-    full_shard = False
+    full_shard = True
     run_mode = "train" # train, generate, both
 
 
