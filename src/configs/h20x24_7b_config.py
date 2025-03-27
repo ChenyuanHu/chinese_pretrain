@@ -19,7 +19,7 @@ class TrainConfig:
 
 # 模型参数
 class ModuleConfig:
-    block_size: int = 8192
+    block_size: int = 4096
     vocab_size: int = 152000
     n_layer: int = 32
     n_head: int = 32
@@ -91,6 +91,6 @@ class TrainDataConfig:
     dataloader_mode = "packing"   # 可选值为 "padding" 或 "packing"
 
     # 生成样例配置
-    max_tokens = 100
+    max_tokens = 1000
     temperature = 0.8
     top_k = 60
