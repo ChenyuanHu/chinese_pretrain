@@ -141,3 +141,8 @@ fineweb_sample_10bt = {
     "text_fn": fineweb_sample_10bt_text_fn,
 }
 
+dummy_data = {
+    "name": "dummy_data",
+    "ds_fn": None,
+    "text_fn": None,
+}
