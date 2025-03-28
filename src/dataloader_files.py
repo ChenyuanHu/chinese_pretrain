@@ -30,6 +30,7 @@ if __name__ == "__main__":
     start_time = time.time()
     last_log_time = start_time
     total_items = 0
+    failed_items = 0
 
     with open(args.output, 'wb') as f_out:
         # 递归遍历目录
@@ -53,8 +54,10 @@ if __name__ == "__main__":
                         content = f_in.read()
 
                 except Exception as e:
+                    failed_items += 1
                     print(f"读取文件 {relative_path} 失败: {str(e)}")
-                    exit(1)
+                    continue
+
 
                 chunk = f"=== 文件路径: {relative_path} ===\n{content}\n\n"
                 encoded = tokenizer.encode(chunk)
@@ -72,10 +75,10 @@ if __name__ == "__main__":
                 # 每30秒打印一次进度
                 current_time = time.time()
                 if current_time - last_log_time >= 30:
-                    print(f"已处理 {total_items} 项, 用时 {current_time - start_time:.2f}秒")
+                    print(f"已处理 {total_items} 项, 失败 {failed_items} 项, 用时 {current_time - start_time:.2f}秒")
                     last_log_time = current_time
                 
-    print(f"已处理 {total_items} 项, 用时 {current_time - start_time:.2f}秒")
+    print(f"已处理 {total_items} 项, 失败 {failed_items} 项, 用时 {current_time - start_time:.2f}秒")
 
     data_mapper = DataMapper(args.output)
     tokens = data_mapper.map_to_array()
