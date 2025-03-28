@@ -109,10 +109,17 @@ class Trainer:
         self.optimizer.zero_grad()  # 在epoch开始时重置梯度
         
         last_print_time = time.time()
+        # 初始化取样本时间统计列表
+        sample_times = []
+        
         for step in range(self.train_config.steps_per_epoch):
             try:
-                # 获取下一批数据
+                # 获取下一批数据，并统计时间
+                sample_start_time = time.time()
                 x, y = self.data_loader.next()
+                sample_end_time = time.time()
+                sample_times.append(sample_end_time - sample_start_time)
+                
                 x = torch.tensor(x, dtype=torch.long, device=self.env.device)
                 y = torch.tensor(y, dtype=torch.long, device=self.env.device)
                 
@@ -153,6 +160,19 @@ class Trainer:
         # 在epoch结束时同步所有进程
         self.env.barrier()
         
+        # 计算样本时间的统计信息
+        if len(sample_times) > 0:
+            avg_sample_time = sum(sample_times) / len(sample_times)
+            max_sample_time = max(sample_times)
+            min_sample_time = min(sample_times)
+            # 计算方差
+            variance = sum((t - avg_sample_time) ** 2 for t in sample_times) / len(sample_times)
+
+            sample_times = []
+            
+            # 收集所有进程的样本时间统计
+            if self.env.local_rank == 0:
+                tprint(f"样本获取时间统计 (进程 {self.env.rank}) - 平均: {avg_sample_time*1000:.2f}ms, 方差: {variance*1000*1000:.2f}ms², 最大: {max_sample_time*1000:.2f}ms, 最小: {min_sample_time*1000:.2f}ms")
 
         total_train_loss_tensor = torch.tensor(total_train_loss, device=self.env.device)
         total_train_tokens_tensor = torch.tensor(total_train_tokens, device=self.env.device)
