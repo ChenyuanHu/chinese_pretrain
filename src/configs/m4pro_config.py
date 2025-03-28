@@ -3,7 +3,7 @@
 
 # 训练循环
 class TrainConfig:
-    batch_size = 8
+    batch_size = 4
     gradient_accumulation_steps = 1  # 梯度累积步数
 
     num_epochs = 10000 # 一般不结束
@@ -47,17 +47,17 @@ class PretrainConfig:
             "weight": 3
         },
         {
-            "enabled": True,
+            "enabled": False,
             "data": codeparrot_clean_1percent,
             "weight": 1
         },
         {
-            "enabled": True,
+            "enabled": False,
             "data": zh_en_translation,
             "weight": 1
         },
         {
-            "enabled": True,
+            "enabled": False,
             "data": open_r1_math_220k,
             "weight": 1
         }
