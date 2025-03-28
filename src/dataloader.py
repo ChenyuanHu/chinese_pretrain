@@ -176,7 +176,6 @@ class DataMapper:
                     tprint(f"使用posix_fadvise(os.POSIX_FADV_SEQUENTIAL)失败")
                     pass
 
-                self.file = open(filename, 'rb')
                 self.mm = mmap.mmap(self.fd, 0, access=mmap.ACCESS_READ)
                 
                 # 尝试使用madvise，如果系统支持的话
@@ -213,12 +212,12 @@ class DataMapper:
                 
             def __del__(self):
                 # 确保在对象被销毁时关闭资源
-                if hasattr(self, 'mm') and self.mm:
+                if hasattr(self, 'mm') and self.mm is not None:
                     self.mm.close()
-                if hasattr(self, 'file') and self.file:
-                    self.file.close()
-                if hasattr(self, 'fd'):
-                    os.close(self.fd)
+                if hasattr(self, 'fd') and self.fd is not None:
+                    # 检查os模块是否仍然可用
+                    if 'os' in globals() and os is not None and hasattr(os, 'close'):
+                        os.close(self.fd)
                     
         return MemoryMappedTokens(self.file_path)
 
