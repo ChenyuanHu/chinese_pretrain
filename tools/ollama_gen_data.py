@@ -8,6 +8,75 @@ import random
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+"/src")
 from tokenizer import Tokenizer
 
+def generate_text_openai(prompt, model="qwen25-32b", api_key=None, api_url=None):
+    """
+    使用OpenAI API生成文本
+    
+    Args:
+        prompt (str): 输入提示词
+        model (str): 要使用的模型名称，默认为gpt-3.5-turbo
+        api_key (str): OpenAI API密钥
+        api_url (str): API端点URL，默认为OpenAI官方API
+    
+    Returns:
+        str: 生成的文本
+    """
+    api_key = os.getenv("OPENAI_API_KEY")
+    api_url = os.getenv("OPENAI_API_URL")
+
+    if not api_key:
+        raise ValueError("必须提供API密钥")
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}"
+    }
+    
+    payload = {
+        "model": model,
+        "messages": [
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    }
+    
+    try:
+        # 确保URL以/chat/completions结尾
+        if not api_url.endswith("/chat/completions"):
+            if api_url.endswith("/"):
+                api_url = api_url + "chat/completions"
+            else:
+                api_url = api_url + "/chat/completions"
+                
+        print(f"请求URL: {api_url}")
+        print(f"请求内容: {payload}")
+        
+        response = requests.post(api_url, headers=headers, json=payload)
+        response.raise_for_status()  # 检查是否有错误
+        print(f"响应状态码: {response.status_code}")
+        print(f"响应内容: {response.text}")
+        
+        try:
+            result = response.json()
+            # 从choices数组中提取第一个回复的content
+            if "choices" in result and len(result["choices"]) > 0:
+                if "message" in result["choices"][0] and "content" in result["choices"][0]["message"]:
+                    return result["choices"][0]["message"]["content"]
+            print("API返回的响应格式不符合预期")
+            exit(1)
+        except json.JSONDecodeError as e:
+            print(f"JSON解析错误: {e}")
+            exit(1)
+            
+    except requests.exceptions.RequestException as e:
+        print(f"请求错误: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            print(f"错误响应内容: {e.response.text}")
+        exit(1)
+
+
 def generate_text(prompt, model="qwen2.5:7b"):
     """
     使用本地运行的Ollama生成文本
@@ -194,14 +263,9 @@ if __name__ == "__main__":
     result = "请给我关于计算机领域的名词"
     with open("result.txt", "a") as f:
         while True:
-            topic = random.choice(topics)
-            result = generate_text(f"请根据下文，挑选一个不相同的但是有一点点相关话题，总体围绕着计算机运维和开发领域的细节知识，例如可以是某些开源组件的使用，如：{topic}。你只需要回答话题名称即可，不用回答别的。你也可以从下文讨论的里面挑选：" + result)
-
-            print("\nOllama 返回结果:")
-            print(result)
-
             prompt = random.choice(prompts)
-            result = generate_text(prompt + result)
+            topic = random.choice(topics)
+            result = generate_text_openai(prompt + topic)
             
             print("\nOllama 返回结果:")
             print(result)
