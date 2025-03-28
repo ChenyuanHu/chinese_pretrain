@@ -45,6 +45,9 @@ if __name__ == "__main__":
                 _, ext = os.path.splitext(file.lower())
                 if ext not in text_extensions:
                     continue
+
+                if os.path.getsize(file_path) > 128 * 1024:
+                    continue
                 
                 print(f"处理文件: {relative_path}")
                 
