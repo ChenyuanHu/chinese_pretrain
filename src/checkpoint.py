@@ -190,7 +190,7 @@ class DCPCheckpointManager:
         return start_epoch, progress_percentage
         
 
-    def check_save_checkpoint(self, model, optimizer, epoch, progress_percentage):
+    def check_save_checkpoint(self, model, optimizer, epoch, progress_percentage, use_nfs):
         current_time = time.time()
         time_since_last_save = current_time - self.last_save_time
         
@@ -203,9 +203,13 @@ class DCPCheckpointManager:
                 tprint(f"检查点已保存到 {checkpoint_id}，距上次保存: {time_since_last_save:.2f}秒")
                 self.last_save_time = current_time
                 old_checkpoint = os.path.join(self.checkpoint_dir, f"checkpoints_epoch_{self.last_save_epoch}")
-                if os.path.exists(old_checkpoint) and self.env.local_rank == 0: # 同一台主机，只有主进程才能删除checkpoint
-                    tprint(f"删除旧的checkpoint. {old_checkpoint}")
-                    shutil.rmtree(old_checkpoint)
+                if os.path.exists(old_checkpoint):
+                    if use_nfs and self.env.rank == 0: 
+                        tprint(f"删除旧的checkpoint. {old_checkpoint}")
+                        shutil.rmtree(old_checkpoint)
+                    elif not use_nfs and self.env.local_rank == 0:
+                        tprint(f"删除旧的checkpoint. {old_checkpoint}")
+                        os.remove(old_checkpoint)
                 self.last_save_epoch = epoch + 1
             except Exception as e:
                 tprint(f"保存checkpoint时出错: {str(e)}, epoch: {epoch+1}")
@@ -226,9 +230,9 @@ class CheckpointManager:
             start_epoch, progress_percentage = self.normal_manager.try_load_checkpoint(model, optimizer)
         return start_epoch, progress_percentage
 
-    def check_save_checkpoint(self, model, optimizer, epoch, progress_percentage):
+    def check_save_checkpoint(self, model, optimizer, epoch, progress_percentage, use_nfs):
         if self.env.master_process and self.save_normal_checkpoint:
             self.normal_manager.check_save_checkpoint(model, optimizer, epoch, progress_percentage)
 
         if self.save_dcp_checkpoint:
-            self.dcp_manager.check_save_checkpoint(model, optimizer, epoch, progress_percentage)
+            self.dcp_manager.check_save_checkpoint(model, optimizer, epoch, progress_percentage, use_nfs)

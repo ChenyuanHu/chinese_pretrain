@@ -183,7 +183,9 @@ class Trainer:
         tprint(f"数据集使用度: {data_progress_percentage}")
         
         # 检查是否需要保存检查点
-        self.checkpoint_manager.check_save_checkpoint(self.model, self.optimizer, epoch, data_progress_percentage)
+        use_nfs = hasattr(self.train_config, "use_nfs") and self.train_config.use_nfs
+        tprint(f"use_nfs: {use_nfs}")
+        self.checkpoint_manager.check_save_checkpoint(self.model, self.optimizer, epoch, data_progress_percentage, use_nfs)
         
     def train(self):
         start_epoch, progress_percentage = self.checkpoint_manager.try_load_checkpoint(self.model, self.optimizer)
