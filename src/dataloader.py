@@ -20,10 +20,10 @@ class TextFnWrapper:
         return self.fn(x)
 
 class DataPreparer:
-    def __init__(self, source, tokenizer, cache_dir="./dataset_cache", num_workers=None):
+    def __init__(self, source, tokenizer, num_workers=None):
         self.source = source
         self.tokenizer = tokenizer
-        self.cache_dir = cache_dir
+        self.cache_dir = os.environ.get('dataset_cache', "./dataset_cache")
         self.num_workers = num_workers if num_workers is not None else max(1, mp.cpu_count() - 2)
 
         self.text_fn = TextFnWrapper(source["text_fn"])
@@ -149,8 +149,7 @@ class DataPreparer:
         
 
 class DataMapper:
-    def __init__(self, path, cache_dir="./dataset_cache"):
-        self.cache_dir = cache_dir
+    def __init__(self, path):
         self.file_path = path
 
     def map_to_array(self):
@@ -281,11 +280,11 @@ class TrainDataLoader:
 
 
 class MixTrainDataLoader:
-    def __init__(self, world_size, rank, local_rank, batch_size, block_size, cache_dir="./dataset_cache"):
+    def __init__(self, world_size, rank, local_rank, batch_size, block_size):
         self.train_data_loaders = {}
         self.loader_names = []
         self.loader_weights = []
-        self.cache_dir = cache_dir
+        self.cache_dir = os.environ.get('dataset_cache', "./dataset_cache")
 
         for source in TrainDataConfig().data.datasets:
             if not source["enabled"]:

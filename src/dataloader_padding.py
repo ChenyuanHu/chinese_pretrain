@@ -16,10 +16,10 @@ class TextFnWrapper:
         return self.fn(x)
 
 class DataPreparer:
-    def __init__(self, source, tokenizer, cache_dir="./dataset_cache", num_workers=None):
+    def __init__(self, source, tokenizer, num_workers=None):
         self.source = source
         self.tokenizer = tokenizer
-        self.cache_dir = os.path.join(cache_dir, f"{source['name']}_padding")
+        self.cache_dir = os.environ.get('dataset_cache', "./dataset_cache")
         self.num_workers = num_workers if num_workers is not None else max(1, mp.cpu_count() - 2)
 
         self.text_fn = TextFnWrapper(source["text_fn"])
@@ -109,7 +109,7 @@ class DataPreparer:
         return file_paths
 
 class TrainDataLoader:
-    def __init__(self, source, world_size, rank, batch_size, block_size, tokenizer, cache_dir="./dataset_cache"):
+    def __init__(self, source, world_size, rank, batch_size, block_size, tokenizer):
         self.world_size = world_size
         self.rank = rank
         self.batch_size = batch_size
@@ -117,6 +117,7 @@ class TrainDataLoader:
         self.batch_token_size = (self.block_size + 1) * batch_size
         self.source = source
         self.tokenizer = tokenizer
+        cache_dir = os.environ.get('dataset_cache', "./dataset_cache")
         self.cache_dir = os.path.join(cache_dir, f"{source['name']}_padding")
         self.samples = self.init_samples()
         self.iterator = self.__iter__()
@@ -178,7 +179,6 @@ class TrainDataLoader:
         
         tprint(f"进程 {self.rank} 加载完成，共加载 {sum(len(tokens_list) for tokens_list in merged_bucket.values())} 个样本")
 
-        self.bucket = merged_bucket
         return merged_bucket
 
     # 确保所有大于block_size + 1的样本都被切分
@@ -264,12 +264,11 @@ class TrainDataLoader:
         return position_percentage + self.data_epoch * 100
 
 class MixTrainDataLoader:
-    def __init__(self, world_size, rank, local_rank, batch_size, block_size, cache_dir="./dataset_cache"):
+    def __init__(self, world_size, rank, local_rank, batch_size, block_size):
         _ = local_rank
         self.train_data_loaders = {}
         self.loader_names = []
         self.loader_weights = []
-        self.cache_dir = cache_dir
         self.tokenizer = Tokenizer()
         
         # 初始化各个数据集的加载器
@@ -278,7 +277,7 @@ class MixTrainDataLoader:
                 continue
             name = source["data"]["name"]
             self.train_data_loaders[name] = TrainDataLoader(source["data"], world_size, rank, 
-                                                           batch_size, block_size, self.tokenizer, cache_dir)
+                                                           batch_size, block_size, self.tokenizer)
             self.loader_names.append(name)
             # 如果没有指定权重，默认为1.0
             self.loader_weights.append(source.get("weight", 1.0))
