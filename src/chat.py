@@ -1,13 +1,14 @@
 import torch
 import argparse
+import torch.nn.functional as F
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='交互式对话程序')
     parser.add_argument('--model_path', type=str, required=True, help='模型权重文件路径')
     parser.add_argument('--max_length', type=int, default=2048, help='最大序列长度')
     parser.add_argument('--max_new_tokens', type=int, default=2048, help='生成的最大token数量')
-    parser.add_argument('--top_p', type=float, default=0.9, help='核采样参数')
-    parser.add_argument('--top_k', type=int, default=50, help='top-k采样参数，设置为0则禁用')
+    parser.add_argument('--top_p', type=float, default=1.0, help='核采样参数')
+    parser.add_argument('--top_k', type=int, default=60, help='top-k采样参数，设置为0则禁用')
     parser.add_argument('--temperature', type=float, default=0.8, help='采样温度')
     parser.add_argument('--device', type=str, default='cpu', help='设备')
     parser.add_argument('--max_history_rounds', type=int, default=0, help='保留的对话历史轮数，默认为0，不使用历史记录')
@@ -61,46 +62,52 @@ class ChatBot:
         
         with torch.no_grad():
             generated_ids = []
-            past_tokens = input_ids
+            tokens = input_ids
             
             for _ in range(max_new_tokens):
-                # 向前传播模型
-                logits, _ = self.model(past_tokens)
+                # 如果序列太长，只保留后面的部分
+                if tokens.size(1) > self.args.max_length:
+                    tokens = tokens[:, -(self.args.max_length):]
                 
-                # 获取最新的token的logits
-                next_token_logits = logits[:, -1, :]
+                # 前向传播
+                logits, _ = self.model(tokens)
                 
-                # 应用温度
-                next_token_logits = next_token_logits / self.args.temperature
+                # 获取最后一个位置的预测
+                next_token_logits = logits[:, -1, :] / self.args.temperature
                 
-                # 首先应用top-k采样（如果启用）
+                # 应用top-k采样
                 if self.args.top_k > 0:
-                    top_k = min(self.args.top_k, next_token_logits.size(-1))
-                    indices_to_remove = next_token_logits < torch.topk(next_token_logits, top_k)[0][..., -1, None]
-                    next_token_logits[indices_to_remove] = -float('Inf')
+                    v, _ = torch.topk(next_token_logits, min(self.args.top_k, next_token_logits.size(-1)))
+                    next_token_logits[next_token_logits < v[:, [-1]]] = float('-inf')
                 
-                # 然后应用top-p核采样
-                sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
-                cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+                # 应用top-p核采样（如果启用）
+                if self.args.top_p < 1.0:
+                    sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
+                    cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+                    
+                    # 移除概率质量超过top_p的token
+                    sorted_indices_to_remove = cumulative_probs > self.args.top_p
+                    sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+                    sorted_indices_to_remove[..., 0] = 0
+                    
+                    for batch_idx in range(next_token_logits.shape[0]):
+                        indices_to_remove = sorted_indices[batch_idx][sorted_indices_to_remove[batch_idx]]
+                        next_token_logits[batch_idx, indices_to_remove] = -float("Inf")
                 
-                # 移除概率质量超过top_p的token
-                sorted_indices_to_remove = cumulative_probs > self.args.top_p
-                sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
-                sorted_indices_to_remove[..., 0] = 0
-                
-                for batch_idx in range(next_token_logits.shape[0]):
-                    indices_to_remove = sorted_indices[batch_idx][sorted_indices_to_remove[batch_idx]]
-                    next_token_logits[batch_idx, indices_to_remove] = -float("Inf")
+                # 应用softmax获取概率分布
+                probs = F.softmax(next_token_logits, dim=-1)
                 
                 # 采样下一个token
-                probs = torch.softmax(next_token_logits, dim=-1)
                 next_token = torch.multinomial(probs, num_samples=1)
+                
+                # 追加到序列
+                tokens = torch.cat([tokens, next_token], dim=1)
                 
                 # 如果生成了结束标记，停止生成
                 if next_token.item() == self.tokenizer.eos_token_id:
                     break
                     
-                # 添加生成的token
+                # 添加生成的token到结果列表
                 token_id = next_token.item()
                 generated_ids.append(token_id)
                 
@@ -109,13 +116,6 @@ class ChatBot:
                     # 解码当前生成的token
                     token_text = self.tokenizer.decode([token_id])
                     stream_callback(token_text)
-                
-                # 更新past_tokens以包含新生成的token
-                past_tokens = torch.cat([past_tokens, next_token], dim=1)
-                
-                # 如果序列过长，保留最近的tokens
-                if past_tokens.shape[1] > self.args.max_length:
-                    past_tokens = past_tokens[:, -self.args.max_length:]
             
             return self.tokenizer.decode(generated_ids)
         
