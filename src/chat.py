@@ -35,6 +35,7 @@ class ChatBot:
         checkpoint = torch.load(self.args.model_path, map_location=self.device, weights_only=True)
         if self.args.compile:
             self.model = torch.compile(self.model)
+            fixed_state_dict = checkpoint['app']['model_state_dict']
         else:
             # 去除 "_orig_mod." 前缀，因为compile时会自动添加
             fixed_state_dict = {
