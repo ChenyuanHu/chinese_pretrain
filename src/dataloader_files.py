@@ -8,7 +8,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--dir', type=str, help='输入目录路径', default=".")
     parser.add_argument('--base_dir', type=str, help='基础目录路径，样本的路径描述都会基于这个目录', default=".")
-    parser.add_argument('--output', type=str, help='输出文件名', default="output.txt")
+    parser.add_argument('--output', type=str, help='输出文件名', default="output.bin")
     args = parser.parse_args()
 
     # 获取规范化的工作目录和输入目录绝对路径
