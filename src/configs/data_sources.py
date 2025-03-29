@@ -125,6 +125,17 @@ open_math_instruct_2 = {
     "text_fn": open_math_instruct_2_text_fn,
 }
 
+def open_web_math_ds_fn():
+    return load_dataset("open-web-math/open-web-math", split="train")
+
+def open_web_math_text_fn(x):
+    return x["text"]
+
+open_web_math = {
+    "name": "open_web_math",
+    "ds_fn": open_web_math_ds_fn,
+    "text_fn": open_web_math_text_fn,
+}
 
 def fineweb_sample_10bt_ds_fn():
     return load_dataset("HuggingFaceFW/fineweb", "sample-10BT", split="train")
