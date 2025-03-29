@@ -102,6 +102,18 @@ fig.suptitle('Training Metrics', fontsize=16)
 from matplotlib.gridspec import GridSpec
 gs = GridSpec(5, 2, figure=fig)  # 5行而不是4行
 
+# 计算所有图表共享的 X 轴范围
+if timestamps:
+    x_min = min(timestamps)
+    x_max = max(timestamps)
+    # 添加一点边距
+    time_range = x_max - x_min
+    padding = time_range * 0.05  # 5% 的边距
+    x_min = x_min - padding
+    x_max = x_max + padding
+else:
+    x_min = x_max = None
+
 # Global loss plot
 ax1 = fig.add_subplot(gs[0, 0])
 ax1.plot(timestamps, losses, 'b-', label='Loss')
@@ -110,6 +122,8 @@ ax1.set_xlabel('Time')
 ax1.grid(True)
 ax1.legend()
 ax1.set_title('Global Training Loss')
+if x_min and x_max:
+    ax1.set_xlim(x_min, x_max)
 
 # Global perplexity plot
 ax2 = fig.add_subplot(gs[0, 1])
@@ -119,6 +133,8 @@ ax2.set_xlabel('Time')
 ax2.grid(True)
 ax2.legend()
 ax2.set_title('Global Perplexity')
+if x_min and x_max:
+    ax2.set_xlim(x_min, x_max)
 
 # Learning rate plot
 ax3 = fig.add_subplot(gs[1, 0])
@@ -128,6 +144,8 @@ ax3.set_xlabel('Time')
 ax3.grid(True)
 ax3.legend()
 ax3.set_title('Learning Rate Over Time')
+if x_min and x_max:
+    ax3.set_xlim(x_min, x_max)
 
 # Dataset usage plot
 ax4 = fig.add_subplot(gs[1, 1])
@@ -146,6 +164,8 @@ ax4.set_xlabel('Time')
 ax4.grid(True)
 ax4.legend(loc='upper left', bbox_to_anchor=(1, 1))
 ax4.set_title('Dataset Usage Over Time')
+if x_min and x_max:
+    ax4.set_xlim(x_min, x_max)
 
 # Throughput (tokens/s) plot
 ax5 = fig.add_subplot(gs[2, 0])
@@ -155,6 +175,8 @@ ax5.set_xlabel('Time')
 ax5.grid(True)
 ax5.legend()
 ax5.set_title('Training Throughput Over Time')
+if x_min and x_max:
+    ax5.set_xlim(x_min, x_max)
 
 # Epoch progress plot
 ax6 = fig.add_subplot(gs[2, 1])
@@ -164,6 +186,8 @@ ax6.set_xlabel('Time')
 ax6.grid(True)
 ax6.legend()
 ax6.set_title('Epoch Progress Over Time')
+if x_min and x_max:
+    ax6.set_xlim(x_min, x_max)
 
 # 新增：数据集处理token数图表
 ax9 = fig.add_subplot(gs[3, :])  # 使用整行
@@ -184,12 +208,26 @@ ax9.legend(loc='upper left', bbox_to_anchor=(1, 1))
 ax9.set_title('Dataset Processed Tokens Over Time')
 # 对y轴使用科学计数法
 ax9.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
+if x_min and x_max:
+    ax9.set_xlim(x_min, x_max)
 
 # Get the most recent 30 data points (or all if less than 30)
 recent_count = min(30, len(timestamps))
 recent_timestamps = timestamps[-recent_count:]
 recent_losses = losses[-recent_count:]
 recent_perplexities = perplexities[-recent_count:]
+
+# 计算最近数据点的 X 轴范围
+if recent_timestamps:
+    recent_x_min = min(recent_timestamps)
+    recent_x_max = max(recent_timestamps)
+    # 添加一点边距
+    recent_time_range = recent_x_max - recent_x_min
+    recent_padding = recent_time_range * 0.05  # 5% 的边距
+    recent_x_min = recent_x_min - recent_padding
+    recent_x_max = recent_x_max + recent_padding
+else:
+    recent_x_min = recent_x_max = None
 
 # Zoomed-in loss plot
 ax7 = fig.add_subplot(gs[4, 0])
@@ -199,6 +237,8 @@ ax7.set_xlabel('Time')
 ax7.grid(True)
 ax7.legend()
 ax7.set_title('Last {} Data Points - Loss'.format(recent_count))
+if recent_x_min and recent_x_max:
+    ax7.set_xlim(recent_x_min, recent_x_max)
 
 # Zoomed-in perplexity plot
 ax8 = fig.add_subplot(gs[4, 1])
@@ -208,6 +248,8 @@ ax8.set_xlabel('Time')
 ax8.grid(True)
 ax8.legend()
 ax8.set_title('Last {} Data Points - Perplexity'.format(recent_count))
+if recent_x_min and recent_x_max:
+    ax8.set_xlim(recent_x_min, recent_x_max)
 
 # Rotate x-axis labels for better readability
 for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9]:
