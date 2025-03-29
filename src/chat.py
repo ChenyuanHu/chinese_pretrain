@@ -37,8 +37,16 @@ class ChatBot:
         self.model.eval()
         print("模型加载完成！")
         
-    def generate(self, input_text, max_new_tokens=100):
-        """生成回复"""
+    def generate(self, input_text, max_new_tokens=100, stream_callback=None):
+        """生成回复，支持流式输出
+        
+        参数:
+            input_text: 输入文本
+            max_new_tokens: 最大生成token数
+            stream_callback: 流式回调函数，接收当前生成的token作为参数
+        返回:
+            完整的生成文本
+        """
         input_ids = torch.tensor(self.tokenizer.encode(input_text)).unsqueeze(0).to(self.device)
         
         with torch.no_grad():
@@ -83,7 +91,14 @@ class ChatBot:
                     break
                     
                 # 添加生成的token
-                generated_ids.append(next_token.item())
+                token_id = next_token.item()
+                generated_ids.append(token_id)
+                
+                # 流式输出
+                if stream_callback is not None:
+                    # 解码当前生成的token
+                    token_text = self.tokenizer.decode([token_id])
+                    stream_callback(token_text)
                 
                 # 更新past_tokens以包含新生成的token
                 past_tokens = torch.cat([past_tokens, next_token], dim=1)
@@ -129,20 +144,29 @@ class ChatBot:
                 # 添加当前用户输入
                 prompt += f"{self.tokenizer.user_token}{user_input}{self.tokenizer.assistant_token}"
             
+            # 流式输出回调函数
+            print("AI: ", end="", flush=True)
+            full_response = ""
+            
+            def stream_output(text):
+                nonlocal full_response
+                full_response += text
+                print(text, end="", flush=True)
+            
             # 生成回复
             try:
-                response = self.generate(prompt, max_new_tokens=self.args.max_new_tokens)
-                print(f"AI: {response}")
+                response = self.generate(prompt, max_new_tokens=self.args.max_new_tokens, stream_callback=stream_output)
+                print()  # 添加换行
                 
                 # 更新历史
-                history.append((user_input, response))
+                history.append((user_input, full_response))
                 
                 # 如果历史太长，移除最早的对话
                 if len(history) > 20:  # 保留更长的历史用于记录，实际使用由max_history_rounds控制
                     history.pop(0)
                     
             except Exception as e:
-                print(f"生成回复时出错: {e}")
+                print(f"\n生成回复时出错: {e}")
                 
 def main():
     args = parse_arguments()
