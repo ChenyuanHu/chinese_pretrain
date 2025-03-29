@@ -9,6 +9,7 @@ class TrainConfig:
 
     # checkpoint config
     save_interval_sec = 7200  # 每n秒保存一次模型
+    save_last_n_checkpoints = 5 # 保存最后n个checkpoint
     save_dcp_checkpoint = True         # **** 多几多卡的dcp一定要存储在一个所有机器都能访问到的共享存储上面
     save_normal_checkpoint = False
     use_nfs = True  # nfs的时候只能全局rank 0 才能删除checkpoint

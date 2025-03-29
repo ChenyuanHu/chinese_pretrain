@@ -9,13 +9,14 @@ import torch.distributed.checkpoint as dcp
 from torch.distributed.checkpoint.stateful import Stateful
 
 class NormalCheckpointManager:
-    def __init__(self, env, save_interval_sec):
+    def __init__(self, env, save_interval_sec, save_last_n_checkpoints):
         self.env = env
         # 记录上次保存模型的时间
         self.last_save_time = time.time()
         self.last_save_epoch = 0
         self.checkpoint_dir = "experiments/checkpoints"
         self.save_interval_sec = save_interval_sec
+        self.save_last_n_checkpoints = save_last_n_checkpoints
         os.makedirs(self.checkpoint_dir, exist_ok=True)
         tprint(f"创建检查点目录: {self.checkpoint_dir}")
 
@@ -85,10 +86,12 @@ class NormalCheckpointManager:
                 torch.save(save_dict, checkpoint_path)
                 tprint(f"检查点已保存到 {checkpoint_path}，距上次保存: {time_since_last_save:.2f}秒")
                 self.last_save_time = current_time
-                tprint(f"删除旧的checkpoint")
-                if os.path.exists(os.path.join(self.checkpoint_dir, f"checkpoint_epoch_{self.last_save_epoch}.pt")):
-                    os.remove(os.path.join(self.checkpoint_dir, f"checkpoint_epoch_{self.last_save_epoch}.pt"))
                 self.last_save_epoch = epoch + 1
+                tprint(f"检查是否要删除旧的checkpoint")
+                old_checkpoint = os.path.join(self.checkpoint_dir, f"checkpoint_epoch_{self.last_save_epoch - self.save_last_n_checkpoints}.pt")
+                if os.path.exists(old_checkpoint):
+                    tprint(f"删除旧的checkpoint. {old_checkpoint}")
+                    os.remove(old_checkpoint)
             except Exception as e:
                 tprint(f"保存checkpoint时出错: {str(e)}")
                 exit()
@@ -129,13 +132,14 @@ class AppState(Stateful):
 
 
 class DCPCheckpointManager:
-    def __init__(self, env, save_interval_sec):
+    def __init__(self, env, save_interval_sec, save_last_n_checkpoints):
         self.env = env
         # 记录上次保存模型的时间
         self.last_save_time = time.time()
         self.last_save_epoch = 0
         self.checkpoint_dir = "experiments/checkpoints_dcp"
         self.save_interval_sec = save_interval_sec
+        self.save_last_n_checkpoints = save_last_n_checkpoints
         os.makedirs(self.checkpoint_dir, exist_ok=True)
         tprint(f"创建检查点目录: {self.checkpoint_dir}")
 
@@ -202,7 +206,8 @@ class DCPCheckpointManager:
                 dcp.save(state_dict, checkpoint_id=checkpoint_id)
                 tprint(f"检查点已保存到 {checkpoint_id}，距上次保存: {time_since_last_save:.2f}秒")
                 self.last_save_time = current_time
-                old_checkpoint = os.path.join(self.checkpoint_dir, f"checkpoints_epoch_{self.last_save_epoch}")
+                self.last_save_epoch = epoch + 1
+                old_checkpoint = os.path.join(self.checkpoint_dir, f"checkpoints_epoch_{self.last_save_epoch - self.save_last_n_checkpoints}")
                 if os.path.exists(old_checkpoint):
                     if use_nfs and self.env.rank == 0: 
                         tprint(f"删除旧的checkpoint. {old_checkpoint}")
@@ -210,7 +215,6 @@ class DCPCheckpointManager:
                     elif not use_nfs and self.env.local_rank == 0:
                         tprint(f"删除旧的checkpoint. {old_checkpoint}")
                         os.remove(old_checkpoint)
-                self.last_save_epoch = epoch + 1
             except Exception as e:
                 tprint(f"保存checkpoint时出错: {str(e)}, epoch: {epoch+1}")
                 exit()
@@ -218,8 +222,10 @@ class DCPCheckpointManager:
 
 class CheckpointManager:
     def __init__(self, env, train_config):
-        self.normal_manager = NormalCheckpointManager(env, train_config.save_interval_sec)
-        self.dcp_manager = DCPCheckpointManager(env, train_config.save_interval_sec)
+        self.save_last_n_checkpoints = 1 if not hasattr(train_config, "save_last_n_checkpoints") else train_config.save_last_n_checkpoints
+
+        self.normal_manager = NormalCheckpointManager(env, train_config.save_interval_sec, self.save_last_n_checkpoints)
+        self.dcp_manager = DCPCheckpointManager(env, train_config.save_interval_sec, self.save_last_n_checkpoints)
         self.env = env
         self.save_dcp_checkpoint = train_config.save_dcp_checkpoint
         self.save_normal_checkpoint = train_config.save_normal_checkpoint
