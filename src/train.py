@@ -201,6 +201,8 @@ class Trainer:
 
         #tprint(f"全局验证损失: {global_eval_avg_loss:.4f}, 困惑度: {global_eval_ppl:.4f}")
         tprint(f"数据集使用度: {data_progress_percentage}")
+        if hasattr(self.data_loader, "get_processed_tokens_count"):
+            tprint(f"数据集处理token数: {self.data_loader.get_processed_tokens_count()}")
         
         # 检查是否需要保存检查点
         use_nfs = hasattr(self.train_config, "use_nfs") and self.train_config.use_nfs

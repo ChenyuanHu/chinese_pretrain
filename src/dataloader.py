@@ -334,6 +334,19 @@ class MixTrainDataLoader:
             
         # 将进度数据转换为JSON字符串并返回
         return json.dumps(progress_data)
+        
+    def get_processed_tokens_count(self):
+        # 收集所有数据加载器处理的绝对token数量
+        tokens_count = {}
+        for name, loader in self.train_data_loaders.items():
+            # 获取进度百分比
+            progress_percentage = loader.get_data_progress_percentage()
+            # 计算绝对token数量 = 总token数量 * 进度百分比 / 100
+            processed_tokens = loader.all_tokens_len * progress_percentage / 100
+            tokens_count[name] = int(processed_tokens)
+            
+        # 将token数量数据转换为JSON字符串并返回
+        return json.dumps(tokens_count)
 
 
 if __name__ == "__main__":
