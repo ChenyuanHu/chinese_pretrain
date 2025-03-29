@@ -87,6 +87,19 @@ zh_en_translation_v2 = {
 }
 
 
+def translation_chinese_2_english_ds_fn():
+    return load_dataset("wlhb/Transaltion-Chinese-2-English", split="train")
+
+def translation_chinese_2_english_text_fn(x):
+    return x["english"] + "\n上文翻译成中文是：\n" + x["chinese"]
+
+translation_chinese_2_english = {
+    "name": "translation_chinese_2_english",
+    "ds_fn": translation_chinese_2_english_ds_fn,
+    "text_fn": translation_chinese_2_english_text_fn,
+}
+
+
 def sft_r1_distill_ds_fn():
     return load_dataset("Congliu/Chinese-DeepSeek-R1-Distill-data-110k-SFT", data_dir=None, split="train")
 
