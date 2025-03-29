@@ -63,7 +63,7 @@ class PretrainConfig:
             "weight": 3
         },
         {
-            "enabled": True,
+            "enabled": False,
             "data": zh_en_translation_v2,
             "weight": 0.008
         },
