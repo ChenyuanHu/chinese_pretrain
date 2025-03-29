@@ -4,7 +4,7 @@ class TrainConfig:
     gradient_accumulation_steps = 1  # 梯度累积步数
 
     num_epochs = 10000 # 一般不结束
-    scheduler_epochs = 100 # 调度器预期训练收敛需要的epoch数
+    scheduler_epochs = 400 # 调度器预期训练收敛需要的epoch数
     steps_per_epoch = 500  # 每个epoch训练多少批次
 
     # checkpoint config
