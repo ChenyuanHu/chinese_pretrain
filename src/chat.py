@@ -10,7 +10,7 @@ def parse_arguments():
     parser.add_argument('--top_k', type=int, default=50, help='top-k采样参数，设置为0则禁用')
     parser.add_argument('--temperature', type=float, default=0.8, help='采样温度')
     parser.add_argument('--device', type=str, default='cpu', help='设备')
-    parser.add_argument('--max_history_rounds', type=int, default=1, help='保留的对话历史轮数，默认为1')
+    parser.add_argument('--max_history_rounds', type=int, default=0, help='保留的对话历史轮数，默认为0，不使用历史记录')
     parser.add_argument('--generate_mode', action='store_true', help='使用补全模式而不是对话模式')
     return parser.parse_args()
 
@@ -120,13 +120,14 @@ class ChatBot:
                 # 补全模式：直接使用用户输入
                 prompt = user_input
             else:
-                # 对话模式：使用特定格式 <｜User｜>问题<<｜Assistant｜>
+                # 对话模式：使用特定格式
                 prompt = ""
                 # 添加历史对话
-                for h in history[-self.args.max_history_rounds:]:
-                    prompt += f"<｜User｜>{h[0]}<<｜Assistant｜>{h[1]}"
+                if self.args.max_history_rounds > 0:
+                    for h in history[-self.args.max_history_rounds:]:
+                        prompt += f"{self.tokenizer.user_token}{h[0]}{self.tokenizer.assistant_token}{h[1]}"
                 # 添加当前用户输入
-                prompt += f"<｜User｜>{user_input}<<｜Assistant｜>"
+                prompt += f"{self.tokenizer.user_token}{user_input}{self.tokenizer.assistant_token}"
             
             # 生成回复
             try:
