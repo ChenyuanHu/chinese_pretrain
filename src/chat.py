@@ -5,7 +5,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description='交互式对话程序')
     parser.add_argument('--model_path', type=str, required=True, help='模型权重文件路径')
     parser.add_argument('--max_length', type=int, default=2048, help='最大序列长度')
-    parser.add_argument('--max_new_tokens', type=int, default=100, help='生成的最大token数量')
+    parser.add_argument('--max_new_tokens', type=int, default=2048, help='生成的最大token数量')
     parser.add_argument('--top_p', type=float, default=0.9, help='核采样参数')
     parser.add_argument('--top_k', type=int, default=50, help='top-k采样参数，设置为0则禁用')
     parser.add_argument('--temperature', type=float, default=0.8, help='采样温度')
