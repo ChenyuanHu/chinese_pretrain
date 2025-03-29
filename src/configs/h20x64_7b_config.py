@@ -69,7 +69,7 @@ class PretrainConfig:
         },
         {
             "enabled": True,
-            "data": fineweb_sample_10bt,
+            "data": fineweb_sample_100bt,
             "weight": 2
         }
     ]

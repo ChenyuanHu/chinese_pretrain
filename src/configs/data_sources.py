@@ -126,9 +126,6 @@ open_math_instruct_2 = {
 }
 
 
-
-
-
 def fineweb_sample_10bt_ds_fn():
     return load_dataset("HuggingFaceFW/fineweb", "sample-10BT", split="train")
 
@@ -139,6 +136,18 @@ fineweb_sample_10bt = {
     "name": "fineweb_sample_10bt",
     "ds_fn": fineweb_sample_10bt_ds_fn,
     "text_fn": fineweb_sample_10bt_text_fn,
+}
+
+def fineweb_sample_100bt_ds_fn():
+    return load_dataset("HuggingFaceFW/fineweb", "sample-100BT", split="train")
+
+def fineweb_sample_100bt_text_fn(x):
+    return x["text"]
+
+fineweb_sample_100bt = {
+    "name": "fineweb_sample_100bt",
+    "ds_fn": fineweb_sample_100bt_ds_fn,
+    "text_fn": fineweb_sample_100bt_text_fn,
 }
 
 dummy_data = {
