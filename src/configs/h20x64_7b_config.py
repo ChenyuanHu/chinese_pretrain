@@ -64,6 +64,11 @@ class PretrainConfig:
         },
         {
             "enabled": False,
+            "data": translation_chinese_2_english,
+            "weight": 0.008
+        },
+        {
+            "enabled": False,
             "data": zh_en_translation_v2,
             "weight": 0.008
         },
