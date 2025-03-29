@@ -360,8 +360,8 @@ if __name__ == "__main__":
         tokenss.append(tokens)
 
     train_data_loader = MixTrainDataLoader(1, 0, 0, 1, 1024)
-    tprint("打印10个case检查一下")
-    for _ in range(10):
+    tprint("打印100个case检查一下")
+    for _ in range(100):
         xs, ys = train_data_loader.next()
         tprint("="*80)
         tprint(f"xs: {tokenizer.decode(xs[0] + ys[0][-1:])}")
