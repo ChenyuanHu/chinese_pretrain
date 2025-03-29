@@ -214,7 +214,7 @@ class DCPCheckpointManager:
                         shutil.rmtree(old_checkpoint)
                     elif not use_nfs and self.env.local_rank == 0:
                         tprint(f"删除旧的checkpoint. {old_checkpoint}")
-                        os.remove(old_checkpoint)
+                        shutil.rmtree(old_checkpoint)
             except Exception as e:
                 tprint(f"保存checkpoint时出错: {str(e)}, epoch: {epoch+1}")
                 exit()
