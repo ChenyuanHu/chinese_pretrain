@@ -6,7 +6,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description='交互式对话程序')
     parser.add_argument('--model_path', type=str, required=True, help='模型权重文件路径')
     parser.add_argument('--max_length', type=int, default=2048, help='最大序列长度')
-    parser.add_argument('--max_new_tokens', type=int, default=2048, help='生成的最大token数量')
+    parser.add_argument('--max_new_tokens', type=int, default=100, help='生成的最大token数量')
     parser.add_argument('--top_p', type=float, default=1.0, help='核采样参数')
     parser.add_argument('--top_k', type=int, default=60, help='top-k采样参数，设置为0则禁用')
     parser.add_argument('--temperature', type=float, default=0.8, help='采样温度')
@@ -17,7 +17,7 @@ def parse_arguments():
     return parser.parse_args()
 
 from module import MyModule
-from configs.h20x64_7b_config import ModuleConfig
+from config import ModuleConfig
 from tokenizer import Tokenizer
 
 class ChatBot:
@@ -34,16 +34,20 @@ class ChatBot:
         
         self.model = MyModule(config)
         checkpoint = torch.load(self.args.model_path, map_location=self.device, weights_only=True)
+        if 'app' in checkpoint:
+            model_state_dict = checkpoint['app']['model_state_dict']
+        else:
+            model_state_dict = checkpoint['model_state_dict']
+
         if self.args.compile:
             self.model = torch.compile(self.model)
-            fixed_state_dict = checkpoint['app']['model_state_dict']
         else:
             # 去除 "_orig_mod." 前缀，因为compile时会自动添加
-            fixed_state_dict = {
+            model_state_dict = {
                 key.replace("_orig_mod.", ""): value 
-                for key, value in checkpoint['app']['model_state_dict'].items()
+                for key, value in model_state_dict.items()
             }
-        self.model.load_state_dict(fixed_state_dict, strict=True)
+        self.model.load_state_dict(model_state_dict, strict=True)
         self.model.to(self.device)
         self.model.eval()
         print("模型加载完成！")
