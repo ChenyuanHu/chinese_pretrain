@@ -45,32 +45,37 @@ class PretrainConfig:
         {
             "enabled": True,
             "data": fineweb_edu_chinese_2p1,
-            "weight": 3
+            "weight": 2
         },
         {
             "enabled": True,
             "data": fineweb_sample_100bt,
-            "weight": 3
+            "weight": 2
         },
         {
             "enabled": True,
             "data": open_web_math,
-            "weight": 3
+            "weight": 2
         },
         {
             "enabled": True,
             "data": codeparrot_clean,
-            "weight": 3
+            "weight": 2
         },
         {
             "enabled": False,
+            "data": dummy_data,
+            "weight": 1.5
+        },
+        {
+            "enabled": True,
             "data": translation_chinese_2_english,
-            "weight": 0.008
+            "weight": 0.4
         },
         {
-            "enabled": False,
+            "enabled": True,
             "data": zh_en_translation_v2,
-            "weight": 0.008
+            "weight": 0.1
         },
         {
             "enabled": False,
