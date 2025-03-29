@@ -32,7 +32,7 @@ class ChatBot:
         
         self.model = MyModule(config)
         checkpoint = torch.load(self.args.model_path, map_location=self.device)
-        self.model.load_state_dict(checkpoint['app_state']['model_state_dict'], strict=False)
+        self.model.load_state_dict(checkpoint['app']['model_state_dict'], strict=False)
         self.model.to(self.device)
         self.model.eval()
         print("模型加载完成！")
