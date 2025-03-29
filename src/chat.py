@@ -12,6 +12,7 @@ def parse_arguments():
     parser.add_argument('--device', type=str, default='cpu', help='设备')
     parser.add_argument('--max_history_rounds', type=int, default=0, help='保留的对话历史轮数，默认为0，不使用历史记录')
     parser.add_argument('--generate_mode', action='store_true', help='使用补全模式而不是对话模式')
+    parser.add_argument('--compile', action='store_true', help='使用compile')
     return parser.parse_args()
 
 from module import MyModule
@@ -32,7 +33,15 @@ class ChatBot:
         
         self.model = MyModule(config)
         checkpoint = torch.load(self.args.model_path, map_location=self.device, weights_only=True)
-        self.model.load_state_dict(checkpoint['app']['model_state_dict'], strict=True)
+        if self.args.compile:
+            self.model = torch.compile(self.model)
+        else:
+            # 去除 "_orig_mod." 前缀，因为compile时会自动添加
+            fixed_state_dict = {
+                key.replace("_orig_mod.", ""): value 
+                for key, value in checkpoint['app']['model_state_dict'].items()
+            }
+        self.model.load_state_dict(fixed_state_dict, strict=True)
         self.model.to(self.device)
         self.model.eval()
         print("模型加载完成！")
