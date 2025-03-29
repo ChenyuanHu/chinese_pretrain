@@ -10,6 +10,7 @@ losses = []
 perplexities = []
 learning_rates = []
 dataset_usage = {}
+dataset_tokens = {}  # 新增：存储每个数据集处理的token数
 throughputs = []  # For tokens/s
 epochs = []  # For epoch numbers
 
@@ -63,14 +64,43 @@ with open('train.log', 'r', encoding='utf-8') as f:
                         dataset_usage[key].append(value)
             except json.JSONDecodeError:
                 print(f"Error parsing JSON: {dataset_json}")
+                
+        # 新增：提取数据集处理token数统计
+        tokens_match = re.search(r'(?:\[RANK:0\])?\[(.*?)\].*?数据集处理token数: (\{.*\})', line)
+        if tokens_match:
+            timestamp_str = tokens_match.group(1)
+            tokens_json = tokens_match.group(2)
+            
+            # Parse timestamp
+            timestamp = datetime.datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+            
+            # Parse dataset tokens JSON
+            try:
+                tokens_data = json.loads(tokens_json)
+                # Initialize dataset keys if they don't exist
+                for key in tokens_data:
+                    if key not in dataset_tokens:
+                        dataset_tokens[key] = []
+                
+                # For each dataset, add the tokens value and timestamp
+                for key, value in tokens_data.items():
+                    # Find the corresponding timestamp index
+                    if timestamp in timestamps:
+                        idx = timestamps.index(timestamp)
+                        # Extend the list to match the current timestamp index if needed
+                        while len(dataset_tokens[key]) < idx:
+                            dataset_tokens[key].append(None)
+                        dataset_tokens[key].append(value)
+            except json.JSONDecodeError:
+                print(f"Error parsing JSON: {tokens_json}")
 
 # Create figure with multiple subplots
-fig = plt.figure(figsize=(20, 20))  # Increased height for additional plots
+fig = plt.figure(figsize=(20, 24))  # 增加高度以容纳新图表
 fig.suptitle('Training Metrics', fontsize=16)
 
 # Create GridSpec for more control over subplot layout
 from matplotlib.gridspec import GridSpec
-gs = GridSpec(4, 2, figure=fig)  # 4 rows instead of 3
+gs = GridSpec(5, 2, figure=fig)  # 5行而不是4行
 
 # Global loss plot
 ax1 = fig.add_subplot(gs[0, 0])
@@ -135,6 +165,26 @@ ax6.grid(True)
 ax6.legend()
 ax6.set_title('Epoch Progress Over Time')
 
+# 新增：数据集处理token数图表
+ax9 = fig.add_subplot(gs[3, :])  # 使用整行
+colors = plt.cm.tab10(np.linspace(0, 1, len(dataset_tokens)))
+for (dataset_name, token_values), color in zip(dataset_tokens.items(), colors):
+    # Filter out None values and get corresponding timestamps
+    valid_indices = [i for i, v in enumerate(token_values) if v is not None]
+    valid_timestamps = [timestamps[i] for i in valid_indices]
+    valid_values = [token_values[i] for i in valid_indices]
+    
+    ax9.plot(valid_timestamps, valid_values, marker='o', linestyle='-', 
+             label=dataset_name, color=color)
+
+ax9.set_ylabel('Processed Tokens')
+ax9.set_xlabel('Time')
+ax9.grid(True)
+ax9.legend(loc='upper left', bbox_to_anchor=(1, 1))
+ax9.set_title('Dataset Processed Tokens Over Time')
+# 对y轴使用科学计数法
+ax9.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
+
 # Get the most recent 30 data points (or all if less than 30)
 recent_count = min(30, len(timestamps))
 recent_timestamps = timestamps[-recent_count:]
@@ -142,7 +192,7 @@ recent_losses = losses[-recent_count:]
 recent_perplexities = perplexities[-recent_count:]
 
 # Zoomed-in loss plot
-ax7 = fig.add_subplot(gs[3, 0])
+ax7 = fig.add_subplot(gs[4, 0])
 ax7.plot(recent_timestamps, recent_losses, 'b-', marker='o', label='Loss')
 ax7.set_ylabel('Loss')
 ax7.set_xlabel('Time')
@@ -151,7 +201,7 @@ ax7.legend()
 ax7.set_title('Last {} Data Points - Loss'.format(recent_count))
 
 # Zoomed-in perplexity plot
-ax8 = fig.add_subplot(gs[3, 1])
+ax8 = fig.add_subplot(gs[4, 1])
 ax8.plot(recent_timestamps, recent_perplexities, 'r-', marker='o', label='Perplexity')
 ax8.set_ylabel('Perplexity')
 ax8.set_xlabel('Time')
@@ -160,7 +210,7 @@ ax8.legend()
 ax8.set_title('Last {} Data Points - Perplexity'.format(recent_count))
 
 # Rotate x-axis labels for better readability
-for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8]:
+for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9]:
     plt.setp(ax.get_xticklabels(), rotation=45)
 
 # Adjust layout to prevent label cutoff
