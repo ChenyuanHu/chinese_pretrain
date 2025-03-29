@@ -31,7 +31,7 @@ class ChatBot:
         config = ModuleConfig()
         
         self.model = MyModule(config)
-        checkpoint = torch.load(self.args.model_path, map_location=self.device)
+        checkpoint = torch.load(self.args.model_path, map_location=self.device, weights_only=True)
         self.model.load_state_dict(checkpoint['app']['model_state_dict'], strict=False)
         self.model.to(self.device)
         self.model.eval()
