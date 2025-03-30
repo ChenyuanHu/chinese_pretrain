@@ -162,8 +162,9 @@ class MyModule(nn.Module):
             ln_f = nn.RMSNorm(config.n_embd),
         ))
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-        self.lm_head.LLMC_SKIP_INIT = 1 # don't init this one, we will tie weights
-        self.transformer.wte.weight = self.lm_head.weight # https://paperswithcode.com/method/weight-tying
+        if config.tie_weights:
+            self.lm_head.LLMC_SKIP_INIT = 1 # don't init this one, we will tie weights
+            self.transformer.wte.weight = self.lm_head.weight # https://paperswithcode.com/method/weight-tying
 
         # init all weights
         self.apply(self._init_weights)
