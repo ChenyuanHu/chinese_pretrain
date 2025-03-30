@@ -87,11 +87,18 @@ class NormalCheckpointManager:
                 tprint(f"检查点已保存到 {checkpoint_path}，距上次保存: {time_since_last_save:.2f}秒")
                 self.last_save_time = current_time
                 self.last_save_epoch = epoch + 1
+                
+                # 检查并删除旧的checkpoint，保留最近的save_last_n_checkpoints个
                 tprint(f"检查是否要删除旧的checkpoint")
-                old_checkpoint = os.path.join(self.checkpoint_dir, f"checkpoint_epoch_{self.last_save_epoch - self.save_last_n_checkpoints}.pt")
-                if os.path.exists(old_checkpoint):
-                    tprint(f"删除旧的checkpoint. {old_checkpoint}")
-                    os.remove(old_checkpoint)
+                checkpoint_files = glob.glob(os.path.join(self.checkpoint_dir, "checkpoint_epoch_*.pt"))
+                # 按文件修改时间排序，从旧到新
+                checkpoint_files.sort(key=os.path.getmtime)
+                # 如果文件数量超过要保留的数量，删除最旧的文件
+                if len(checkpoint_files) > self.save_last_n_checkpoints:
+                    files_to_remove = checkpoint_files[:-self.save_last_n_checkpoints]
+                    for old_checkpoint in files_to_remove:
+                        tprint(f"删除旧的checkpoint: {old_checkpoint}")
+                        os.remove(old_checkpoint)
             except Exception as e:
                 tprint(f"保存checkpoint时出错: {str(e)}")
                 exit()
@@ -207,14 +214,22 @@ class DCPCheckpointManager:
                 tprint(f"检查点已保存到 {checkpoint_id}，距上次保存: {time_since_last_save:.2f}秒")
                 self.last_save_time = current_time
                 self.last_save_epoch = epoch + 1
-                old_checkpoint = os.path.join(self.checkpoint_dir, f"checkpoints_epoch_{self.last_save_epoch - self.save_last_n_checkpoints}")
-                if os.path.exists(old_checkpoint):
-                    if use_nfs and self.env.rank == 0: 
-                        tprint(f"删除旧的checkpoint. {old_checkpoint}")
-                        shutil.rmtree(old_checkpoint)
-                    elif not use_nfs and self.env.local_rank == 0:
-                        tprint(f"删除旧的checkpoint. {old_checkpoint}")
-                        shutil.rmtree(old_checkpoint)
+                
+                # 检查并删除旧的checkpoint，保留最近的save_last_n_checkpoints个
+                tprint(f"检查是否要删除旧的checkpoint")
+                # 获取checkpoints_dcp目录下的所有子目录
+                checkpoint_dirs = [os.path.join(self.checkpoint_dir, d) for d in os.listdir(self.checkpoint_dir) 
+                                if os.path.isdir(os.path.join(self.checkpoint_dir, d))]
+                # 按目录修改时间排序，从旧到新
+                checkpoint_dirs.sort(key=os.path.getmtime)
+                # 如果目录数量超过要保留的数量，删除最旧的目录
+                if len(checkpoint_dirs) > self.save_last_n_checkpoints:
+                    dirs_to_remove = checkpoint_dirs[:-self.save_last_n_checkpoints]
+                    for old_checkpoint in dirs_to_remove:
+                        # 根据配置决定哪个进程执行删除操作
+                        if (use_nfs and self.env.rank == 0) or (not use_nfs and self.env.local_rank == 0):
+                            tprint(f"删除旧的checkpoint: {old_checkpoint}")
+                            shutil.rmtree(old_checkpoint)
             except Exception as e:
                 tprint(f"保存checkpoint时出错: {str(e)}, epoch: {epoch+1}")
                 exit()
