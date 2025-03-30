@@ -10,6 +10,7 @@ import json
 
 from config import PretrainConfig, SftConfig, TrainDataConfig
 from tokenizer import Tokenizer
+from prefetch import prefetch_decorator
 
 # 创建包装器类用于处理函数参数
 class TextFnWrapper:
@@ -303,10 +304,16 @@ class MixTrainDataLoader:
             self.loader_weights = [w / weight_sum for w in self.loader_weights]
             tprint(f"数据加载器权重已归一化: {list(zip(self.loader_names, self.loader_weights))}")
 
-    def next(self):
+        # 预期会导致checkpoint恢复的时候每个GPU漏掉buffer_size个数据，不过问题不大
+        self.prefetch_decorator = prefetch_decorator(self._raw_next, buffer_size=4)
+
+    def _raw_next(self):
         # 根据权重随机选择一个loader
         chosen_name = random.choices(self.loader_names, weights=self.loader_weights, k=1)[0]
         return self.train_data_loaders[chosen_name].next()
+
+    def next(self):
+        return next(self.prefetch_decorator)
 
     def set_data_progress_percentage(self, progress_percentage):
         try:
