@@ -55,13 +55,17 @@ with open('train.log', 'r', encoding='utf-8') as f:
                 
                 # For each dataset, add the usage value and timestamp
                 for key, value in usage_data.items():
-                    # Find the corresponding timestamp index
-                    if timestamp in timestamps:
-                        idx = timestamps.index(timestamp)
-                        # Extend the list to match the current timestamp index if needed
-                        while len(dataset_usage[key]) < idx:
-                            dataset_usage[key].append(None)
-                        dataset_usage[key].append(value)
+                    # 找到最接近的时间戳，而不是要求精确匹配
+                    if timestamps:
+                        # 计算时间差，找到最接近的索引
+                        time_diffs = [(abs((t - timestamp).total_seconds()), i) for i, t in enumerate(timestamps)]
+                        closest_idx = min(time_diffs, key=lambda x: x[0])[1]
+                        # 仅当时间差在合理范围内（如60秒）才添加数据点
+                        if time_diffs[closest_idx][0] <= 60:  # 允许60秒误差
+                            # Extend the list to match the current timestamp index if needed
+                            while len(dataset_usage[key]) < closest_idx:
+                                dataset_usage[key].append(None)
+                            dataset_usage[key].append(value)
             except json.JSONDecodeError:
                 print(f"Error parsing JSON: {dataset_json}")
                 
@@ -84,13 +88,17 @@ with open('train.log', 'r', encoding='utf-8') as f:
                 
                 # For each dataset, add the tokens value and timestamp
                 for key, value in tokens_data.items():
-                    # Find the corresponding timestamp index
-                    if timestamp in timestamps:
-                        idx = timestamps.index(timestamp)
-                        # Extend the list to match the current timestamp index if needed
-                        while len(dataset_tokens[key]) < idx:
-                            dataset_tokens[key].append(None)
-                        dataset_tokens[key].append(value)
+                    # 找到最接近的时间戳，而不是要求精确匹配
+                    if timestamps:
+                        # 计算时间差，找到最接近的索引
+                        time_diffs = [(abs((t - timestamp).total_seconds()), i) for i, t in enumerate(timestamps)]
+                        closest_idx = min(time_diffs, key=lambda x: x[0])[1]
+                        # 仅当时间差在合理范围内（如60秒）才添加数据点
+                        if time_diffs[closest_idx][0] <= 60:  # 允许60秒误差
+                            # Extend the list to match the current timestamp index if needed
+                            while len(dataset_tokens[key]) < closest_idx:
+                                dataset_tokens[key].append(None)
+                            dataset_tokens[key].append(value)
             except json.JSONDecodeError:
                 print(f"Error parsing JSON: {tokens_json}")
 
