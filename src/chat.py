@@ -160,20 +160,19 @@ class ChatBot:
             
             # 流式输出回调函数
             print("AI: ", end="", flush=True)
-            full_response = ""
             
             def stream_output(text):
-                nonlocal full_response
-                full_response += text
                 print(text, end="", flush=True)
             
             # 生成回复
             try:
                 response = self.generate(prompt, max_new_tokens=self.args.max_new_tokens, stream_callback=stream_output)
                 print()  # 添加换行
+
+                print(f"完整输出一次避免逐字decode的utf8不完整的问题：\n{response}")
                 
                 # 更新历史
-                history.append((user_input, full_response))
+                history.append((user_input, response))
                 
                 # 如果历史太长，移除最早的对话
                 if len(history) > 20:  # 保留更长的历史用于记录，实际使用由max_history_rounds控制
