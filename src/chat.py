@@ -147,7 +147,7 @@ class ChatBot:
             # 生成提示文本
             if self.args.generate_mode:
                 # 补全模式：直接使用用户输入
-                prompt = user_input
+                prompt = self.tokenizer.bos_token + user_input
             else:
                 # 对话模式：使用特定格式
                 prompt = ""
