@@ -40,14 +40,18 @@ def prefetch_decorator(next_fn, buffer_size=4):
 
     return PrefetchWrapper()
 
-# 用法示例
-# def your_next_function():
-#     # 你的原始 next() 函数（可能有网络阻塞）
-#     return "data"
-# 
-# 包装原函数，预取缓冲区大小为 2
-# prefetched_next = prefetch_decorator(your_next_function, buffer_size=2)
 
-# 使用方式：直接迭代
-# for data in prefetched_next:
-#     print(data)
+# 测试
+if __name__ == "__main__":
+    import time
+    def your_next_function():
+        print("start fetch sleep 1")
+        time.sleep(1)
+        return "data"
+
+    prefetched_next = prefetch_decorator(your_next_function, buffer_size=4)
+    time.sleep(2)
+    print("start")
+    for data in prefetched_next:
+        print(f"get data: {data}")
+        time.sleep(2)
