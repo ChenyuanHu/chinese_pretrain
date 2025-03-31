@@ -256,6 +256,17 @@ if __name__ == "__main__":
     train_config = TrainConfig()
     module_config = ModuleConfig()
     train_data_config = TrainDataConfig()
+    def config_to_dict(config):
+        result = {}
+        # 获取对象属性
+        for k in dir(config):
+            if k.startswith('_') or callable(getattr(config, k, None)):
+                continue
+            result[k] = getattr(config, k, None)
+        return result
+            
+    tprint(f"module_config: {config_to_dict(module_config)}")
+    tprint(f"train_config: {config_to_dict(train_config)}")
     trainer = Trainer(train_config, module_config, train_data_config)
     trainer.train()
     trainer.cleanup()
