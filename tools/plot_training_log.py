@@ -167,9 +167,10 @@ for (dataset_name, usage_values), color in zip(dataset_usage.items(), colors):
     ax4.plot(valid_timestamps, valid_values, marker='o', linestyle='-', 
              label=dataset_name, color=color)
 
-ax4.set_ylabel('Usage')
+ax4.set_ylabel('Usage (log scale)')
 ax4.set_xlabel('Time')
-ax4.grid(True)
+ax4.grid(True, which='both')
+ax4.set_yscale('log')  # 设置y轴为对数刻度
 ax4.legend(loc='upper left', bbox_to_anchor=(1, 1))
 ax4.set_title('Dataset Usage Over Time')
 if x_min and x_max:
@@ -209,13 +210,14 @@ for (dataset_name, token_values), color in zip(dataset_tokens.items(), colors):
     ax9.plot(valid_timestamps, valid_values, marker='o', linestyle='-', 
              label=dataset_name, color=color)
 
-ax9.set_ylabel('Processed Tokens')
+ax9.set_ylabel('Processed Tokens (log scale)')
 ax9.set_xlabel('Time')
-ax9.grid(True)
+ax9.grid(True, which='both')
+ax9.set_yscale('log')  # 设置y轴为对数刻度
 ax9.legend(loc='upper left', bbox_to_anchor=(1, 1))
 ax9.set_title('Dataset Processed Tokens Over Time')
-# 对y轴使用科学计数法
-ax9.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
+# 由于使用了对数刻度，不再需要科学计数法
+# ax9.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
 if x_min and x_max:
     ax9.set_xlim(x_min, x_max)
 
