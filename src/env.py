@@ -74,9 +74,15 @@ class TorchrunEnv:
             self.model = model
             return self.model
 
+        if hasattr(model, "Block"):
+            layer_cls = Model.Block
+        elif hasattr(model, "Qwen2DecoderLayer"):
+            layer_cls = Model.Qwen2DecoderLayer
+        else:
+            raise ValueError(f"model {model} has no Block or Qwen2DecoderLayer")
         auto_wrap_policy = functools.partial(
             transformer_auto_wrap_policy,
-            transformer_layer_cls={Model.Block}
+            transformer_layer_cls={layer_cls}
         )
 
         self.model = FSDP(model,
