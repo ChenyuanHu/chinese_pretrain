@@ -16,10 +16,11 @@ class TrainConfig:
     save_normal_checkpoint = True
 
     compile = False
+    run_mode = "both"
 
 # 模型参数
 class ModuleConfig:
-    block_size: int = 512
+    block_size: int = 1024
     vocab_size: int = 152000
     n_layer: int = 16
     n_head: int = 16
@@ -43,7 +44,7 @@ from configs.data_sources import *
 class PretrainConfig:
     datasets = [
         {
-            "enabled": True,
+            "enabled": False,
             "data": fineweb_edu_chinese_2p1_1percent,
             "weight": 3
         },
@@ -77,8 +78,8 @@ class SftConfig:
 from configs.case_prompts import *
 
 class TrainDataConfig:
-    data = PretrainConfig()
-    case_prompts = pretrain_case_prompts
+    data = SftConfig()
+    case_prompts = sft_case_prompts
     dataloader_mode = "packing"   # 可选值为 "padding" 或 "packing"
 
     # 生成样例配置

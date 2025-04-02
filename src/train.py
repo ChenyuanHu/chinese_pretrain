@@ -4,11 +4,10 @@ import torch.distributed as dist
 import time
 import random
 from env import TorchrunEnv
-from model_custom import CustomModel as Model
 from generate import TextGenerator
 from checkpoint import CheckpointManager
 from eval import EvaluateRunner
-from config import TrainConfig, ModuleConfig, TrainDataConfig
+from config import TrainConfig, ModuleConfig, TrainDataConfig, Model
 from log import tprint
 import gc
 
