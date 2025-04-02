@@ -8,7 +8,7 @@ from torch.distributed.fsdp import CPUOffload
 from torch.distributed.device_mesh import init_device_mesh
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 from log import tprint
-from module import Block
+from model_custom import Block
 
 class TorchrunEnv:
     def __init__(self, force_cpu=False):

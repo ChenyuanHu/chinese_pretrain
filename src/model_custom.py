@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torch.nn.attention import SDPBackend, sdpa_kernel
 from torch.utils.checkpoint import checkpoint
 from rope import RoPEv2 as RoPE
+from collections import namedtuple
 
 class CausalSelfAttention(nn.Module):
     def __init__(self, config, rope):
@@ -145,7 +146,7 @@ class Block(nn.Module):
             return self.forward_without_checkpoint(x)
 
 
-class MyModule(nn.Module):
+class CustomModel(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
@@ -182,20 +183,20 @@ class MyModule(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, idx, targets=None, return_logits=True):
+    def forward(self, input_ids, labels=None, return_logits=True):
         # forward the GPT model itself
-        x = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
+        x = self.transformer.wte(input_ids) # token embeddings of shape (b, t, n_embd)
         for block in self.transformer.h:
             x = block(x)
         x = self.transformer.ln_f(x)
 
-        if targets is not None:
+        if labels is not None:
             # if we are given some desired targets also calculate the loss
             logits = self.lm_head(x)
             # 修改损失计算，对每个样本分别计算损失
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1, reduction='none')
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), labels.view(-1), ignore_index=-1, reduction='none')
             # 重塑损失以匹配批次大小
-            loss = loss.view(targets.shape)
+            loss = loss.view(labels.shape)
             # 对每个序列取平均
             loss = loss.mean(dim=1)
         else:
@@ -207,4 +208,5 @@ class MyModule(nn.Module):
         if not return_logits:
             logits = None
 
-        return logits, loss
+        outputs = namedtuple('Outputs', ['logits', 'loss'])(logits=logits, loss=loss)
+        return outputs

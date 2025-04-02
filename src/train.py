@@ -4,7 +4,7 @@ import torch.distributed as dist
 import time
 import random
 from env import TorchrunEnv
-from module import MyModule
+from model_custom import CustomModel as Model
 from generate import TextGenerator
 from checkpoint import CheckpointManager
 from eval import EvaluateRunner
@@ -23,7 +23,7 @@ class Trainer:
     def __init__(self, train_config, module_config, train_data_config):
         self.env = TorchrunEnv()
         tprint(f"torchrun环境初始化完成")
-        model = MyModule(module_config)
+        model = Model(module_config)
         tprint(f"模型初始化完成")
         model.to(self.env.device)
         tprint(f"模型移动到设备完成")
@@ -125,10 +125,10 @@ class Trainer:
                 
                 # 前向传播
                 with self.amp:
-                    _, loss = self.model(x, y)
-                
+                    outputs = self.model(input_ids=x, labels=y)
+                    loss = outputs.loss
                     # 确保损失是标量
-                    loss = loss.mean()  # 添加这行来确保损失是标量
+                    # loss = loss.mean()  # 这个应该不需要了model_custom.py里面已经处理了，等后面各个配置都测试了就去掉
                     
                     # 缩放损失以适应梯度累积
                     scaled_loss = self.amp_scaler.scale(loss / self.train_config.gradient_accumulation_steps)

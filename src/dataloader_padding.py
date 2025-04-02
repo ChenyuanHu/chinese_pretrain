@@ -19,7 +19,7 @@ class DataPreparer:
     def __init__(self, source, tokenizer, num_workers=None):
         self.source = source
         self.tokenizer = tokenizer
-        self.cache_dir = os.environ.get('dataset_cache', "./dataset_cache")
+        self.cache_dir = os.environ.get('dataset_cache', "./dataset_cache") + "/" + source["name"] + "_padding"
         self.num_workers = num_workers if num_workers is not None else max(1, mp.cpu_count() - 2)
 
         self.text_fn = TextFnWrapper(source["text_fn"])

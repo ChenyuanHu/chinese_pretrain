@@ -48,10 +48,10 @@ class TextGenerator:
                     
                     # 前向传播
                     # 禁用梯度计算并直接调用模型，不使用dynamo上下文管理器
-                    logits, _ = self.model(tokens)
+                    outputs = self.model(tokens)
                     
                     # 获取最后一个位置的预测
-                    logits = logits[:, -1, :] / self.temperature
+                    logits = outputs.logits[:, -1, :] / self.temperature
                     
                     # 应用top-k采样
                     if self.top_k > 0:
