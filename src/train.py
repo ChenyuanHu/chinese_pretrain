@@ -128,7 +128,7 @@ class Trainer:
                     outputs = self.model(input_ids=x, labels=y)
                     loss = outputs.loss
                     # 确保损失是标量
-                    # loss = loss.mean()  # 这个应该不需要了model_custom.py里面已经处理了，等后面各个配置都测试了就去掉
+                    loss = loss.mean()
                     
                     # 缩放损失以适应梯度累积
                     scaled_loss = self.amp_scaler.scale(loss / self.train_config.gradient_accumulation_steps)
