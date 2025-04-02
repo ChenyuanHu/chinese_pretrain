@@ -31,7 +31,7 @@ class ChatBot:
         print(f"正在加载模型: {self.args.model_path}")
         config = ModuleConfig()
         
-        self.model = MyModule(config)
+        self.model = Model(config)
         checkpoint = torch.load(self.args.model_path, map_location=self.device, weights_only=True)
         if 'app' in checkpoint:
             model_state_dict = checkpoint['app']['model_state_dict']
