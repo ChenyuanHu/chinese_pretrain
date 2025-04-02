@@ -17,6 +17,8 @@ class TrainConfig:
 
     compile = "FULL"
 
+from model_custom import CustomModel as Model
+
 # 模型参数
 class ModuleConfig:
     block_size: int = 1024

@@ -16,6 +16,7 @@ class TrainConfig:
     full_shard = True
     run_mode = "train" # train, generate, both
 
+from model_custom import CustomModel as Model
 
 # 模型参数
 class ModuleConfig:

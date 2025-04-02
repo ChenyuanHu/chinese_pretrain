@@ -18,6 +18,8 @@ class TrainConfig:
     compile = False
     run_mode = "both"
 
+from model_qwen import QwenModel as Model
+
 # 模型参数
 class ModuleConfig:
     block_size: int = 1024

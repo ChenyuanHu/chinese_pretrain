@@ -16,8 +16,7 @@ def parse_arguments():
     parser.add_argument('--compile', action='store_true', help='使用compile')
     return parser.parse_args()
 
-from module import MyModule
-from config import ModuleConfig
+from config import ModuleConfig, Model
 from tokenizer import Tokenizer
 
 class ChatBot:

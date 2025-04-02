@@ -15,6 +15,8 @@ class TrainConfig:
     compile = "FULL"
     run_mode = "train" # train, generate, both
 
+from model_custom import CustomModel as Model
+
 # 模型参数
 class ModuleConfig:
     block_size: int = 4096
