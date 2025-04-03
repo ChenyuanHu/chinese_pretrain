@@ -9,8 +9,8 @@ pretrain_case_prompts = [
 ]
 
 sft_case_prompts = [
-    "<｜User｜>请根据规律填充这两个空缺的数字。 4, 3, 4, 3, 4, 3, （），（）<<｜Assistant｜>",
-    "<｜User｜>中华人民共和国的2020年的总书记是谁？<<｜Assistant｜>",
-    "<｜User｜>你是谁？<<｜Assistant｜>",
-    "<｜User｜>today这个单词是什么意思？<<｜Assistant｜>"
+    "<｜User｜>请根据规律填充这两个空缺的数字。 4, 3, 4, 3, 4, 3, （），（）<｜Assistant｜>",
+    "<｜User｜>中华人民共和国的2020年的总书记是谁？<｜Assistant｜>",
+    "<｜User｜>你是谁？<｜Assistant｜>",
+    "<｜User｜>today这个单词是什么意思？<｜Assistant｜>"
 ]
