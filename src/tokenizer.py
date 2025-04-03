@@ -53,3 +53,11 @@ if __name__ == "__main__":
 
     print(tokenizer.encode(tokenizer.bos_token + "你好" + tokenizer.eos_token))
     print(tokenizer.decode(tokenizer.encode(tokenizer.bos_token + "你好" + tokenizer.eos_token)))
+
+    print(tokenizer.encode("<think>"))
+    print(tokenizer.decode(tokenizer.encode("<think>")))
+
+    print(tokenizer.encode("</think>"))
+    print(tokenizer.decode(tokenizer.encode("</think>")))
+    
+    

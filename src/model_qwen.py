@@ -8,8 +8,8 @@ def QwenModel(module_config):
     config.use_sdpa = False
     model = AutoModelForCausalLM.from_pretrained(
             "Qwen/Qwen2.5-0.5B",
-            config=config,
-            device_map="auto"
+            config=config
+            #device_map="auto"
     )
     return model
 
