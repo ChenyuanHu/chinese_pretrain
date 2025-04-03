@@ -25,7 +25,7 @@ class Tokenizer:
         tprint(f"pad_token: {self.pad_token} pad_token_id: {self.pad_token_id}")
         tprint(f"user_token: {self.user_token} user_token_id: {self.user_token_id}")
         tprint(f"assistant_token: {self.assistant_token} assistant_token_id: {self.assistant_token_id}")
-        tprint(f"tokenizer.model_max_length: {self.raw_tokenizer.vocab_size}")
+        tprint(f"tokenizer.vocab_size: {self.raw_tokenizer.vocab_size}")
 
     def decode(self, tokens):
         return self.raw_tokenizer.decode(tokens)
