@@ -7,7 +7,7 @@ from env import TorchrunEnv
 from generate import TextGenerator
 from checkpoint import CheckpointManager
 from eval import EvaluateRunner
-from config import TrainConfig, ModuleConfig, TrainDataConfig, Model
+from config import TrainConfig, ModelConfig, TrainDataConfig, Model
 from log import tprint
 import gc
 
@@ -19,10 +19,10 @@ else:
 torch._dynamo.config.cache_size_limit = 64  # 默认是8
 
 class Trainer:
-    def __init__(self, train_config, module_config, train_data_config):
+    def __init__(self, train_config, model_config, train_data_config):
         self.env = TorchrunEnv()
         tprint(f"torchrun环境初始化完成")
-        model = Model(module_config)
+        model = Model(model_config)
         tprint(f"模型初始化完成")
         model.to(self.env.device)
         tprint(f"模型移动到设备完成")
@@ -41,16 +41,16 @@ class Trainer:
         # 使用32位的AdamW优化器，设置betas和权重衰减
         self.optimizer = optim.AdamW(
             self.model.parameters(), 
-            lr=3e-4,  # 最大学习率
+            lr=3e-5,  # 最大学习率
             betas=(0.9, 0.95),  # beta1和beta2
-            weight_decay=0.1,  # 权重衰减
+            weight_decay=0.01,  # 权重衰减
             eps=1e-8,
             foreach=True
         )
         # 创建学习率调度器，从预热到最大学习率3e-4，最终降至3e-5
         self.scheduler = optim.lr_scheduler.OneCycleLR(
             self.optimizer,
-            max_lr=3e-4,
+            max_lr=3e-5,
             total_steps=train_config.scheduler_epochs * train_config.steps_per_epoch,
             pct_start=0.1,  # 预热阶段占总步数的10%
             final_div_factor=10,  # 确保最终学习率为3e-5 (3e-4/10)
@@ -59,7 +59,7 @@ class Trainer:
         )
         tprint(f"优化器初始化完成")
 
-        self.data_loader = MixTrainDataLoader(self.env.world_size, self.env.rank, self.env.local_rank, train_config.batch_size, module_config.block_size)
+        self.data_loader = MixTrainDataLoader(self.env.world_size, self.env.rank, self.env.local_rank, train_config.batch_size, train_config.block_size)
         tprint(f"数据加载器初始化完成")
         # self.evaluate_runner = EvaluateRunner(self.data_loader, train_config.batch_size)
         # tprint(f"评估器初始化完成")
@@ -67,10 +67,10 @@ class Trainer:
         self.checkpoint_manager = CheckpointManager(self.env, train_config)
         tprint(f"检查点管理器初始化完成")
         self.train_config = train_config
-        self.module_config = module_config
+        self.model_config = model_config
 
-        assert self.module_config.dtype in {"float32", "float16", "bfloat16", "float8_e4m3fn", "float8_e5m2"}, f"dtype must be float32, float16, bfloat16 or float8_e4m3fn or float8_e5m2"
-        ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16, 'float8_e4m3fn': torch.float8_e4m3fn, 'float8_e5m2': torch.float8_e5m2}[self.module_config.dtype]
+        assert self.train_config.dtype in {"float32", "float16", "bfloat16", "float8_e4m3fn", "float8_e5m2"}, f"dtype must be float32, float16, bfloat16 or float8_e4m3fn or float8_e5m2"
+        ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16, 'float8_e4m3fn': torch.float8_e4m3fn, 'float8_e5m2': torch.float8_e5m2}[self.train_config.dtype]
         
         self.amp = torch.amp.autocast(device_type=self.env.device_type, dtype=ptdtype)
         self.amp_scaler = torch.amp.GradScaler(
@@ -88,7 +88,7 @@ class Trainer:
         if self.run_mode == "train":
             self.text_generator = None
         else:
-            self.text_generator = TextGenerator(self.model, module_config.block_size, train_data_config, device=self.env.device, amp=self.amp)
+            self.text_generator = TextGenerator(self.model, self.train_config.block_size, train_data_config, device=self.env.device, amp=self.amp)
             tprint(f"文本生成器初始化完成")
 
         # 计算并打印模型参数量
@@ -115,19 +115,16 @@ class Trainer:
             try:
                 # 获取下一批数据，并统计时间
                 sample_start_time = time.time()
-                x, y = self.data_loader.next()
+                x, _ = self.data_loader.next()
                 sample_end_time = time.time()
                 sample_times.append(sample_end_time - sample_start_time)
                 
                 x = torch.tensor(x, dtype=torch.long, device=self.env.device)
-                y = torch.tensor(y, dtype=torch.long, device=self.env.device)
                 
                 # 前向传播
                 with self.amp:
-                    outputs = self.model(input_ids=x, labels=y)
+                    outputs = self.model(input_ids=x, labels=x)
                     loss = outputs.loss
-                    # 确保损失是标量
-                    loss = loss.mean()
                     
                     # 缩放损失以适应梯度累积
                     scaled_loss = self.amp_scaler.scale(loss / self.train_config.gradient_accumulation_steps)
@@ -135,8 +132,8 @@ class Trainer:
                 scaled_loss.backward()
                 
                 # 累计损失和token数
-                total_train_loss += loss.item() * y.numel()
-                total_train_tokens += y.numel()
+                total_train_loss += loss.item() * x.numel()
+                total_train_tokens += x.numel()
                 
                 # 梯度累积：每 gradient_accumulation_steps 步进行一次更新，或者最后一个step
                 if (step + 1) % self.train_config.gradient_accumulation_steps == 0 or (step + 1 == self.train_config.steps_per_epoch):
@@ -149,7 +146,7 @@ class Trainer:
                 if self.env.local_rank == 0 and current_time - last_print_time >= 30:  # 每30秒打印一次
                     tokens_per_sec = total_train_tokens / (current_time - t0)
                     current_lr = int(self.scheduler.get_last_lr()[0] * 1e5)
-                    tprint(f"Epoch {epoch+1}, Step {step+1}/{self.train_config.steps_per_epoch}, Loss: {loss.item():.4f}, LR: {current_lr}e-5, tokens/s/gpu: {tokens_per_sec:.2f}")
+                    tprint(f"Epoch {epoch+1}, Step {step+1}/{self.train_config.steps_per_epoch}, Loss: {loss.item():.4f}, LR: {current_lr:.2f}e-5, tokens/s/gpu: {tokens_per_sec:.2f}")
                     last_print_time = current_time
                     
             except Exception as e:
@@ -253,7 +250,7 @@ if __name__ == "__main__":
     random.seed(42)
 
     train_config = TrainConfig()
-    module_config = ModuleConfig()
+    model_config = ModelConfig()
     train_data_config = TrainDataConfig()
     def config_to_dict(config):
         result = {}
@@ -264,8 +261,8 @@ if __name__ == "__main__":
             result[k] = getattr(config, k, None)
         return result
             
-    tprint(f"module_config: {config_to_dict(module_config)}")
+    tprint(f"model_config: {config_to_dict(model_config)}")
     tprint(f"train_config: {config_to_dict(train_config)}")
-    trainer = Trainer(train_config, module_config, train_data_config)
+    trainer = Trainer(train_config, model_config, train_data_config)
     trainer.train()
     trainer.cleanup()

@@ -130,6 +130,45 @@ class RoPEv2:
         x_rot[..., 0] *= -1
         return x_rot.reshape(*x.shape)
 
+    @torch.no_grad()
+    def apply_rotary_emb_warp_position_ids(self, xq: torch.Tensor, xk: torch.Tensor, position_ids=None):
+        B, T, H, D = xq.shape
+        device, dtype = xq.device, xq.dtype
+
+        # 初始化频率基向量
+        self._init_base_freqs(device, dtype)
+
+        # 处理position_ids
+        if position_ids is None:
+            # 默认位置：0到T-1
+            t = torch.arange(T, device=device).unsqueeze(0)  # [1, T]
+        else:
+            # 确保position_ids的shape为[B, T]
+            assert position_ids.shape == (B, T), f"position_ids shape {position_ids.shape} should be {(B, T)}"
+            t = position_ids.to(device=device)
+
+        # 动态计算频率矩阵
+        freqs = torch.einsum('bt,d->btd', t.to(dtype=self.base_freqs.dtype), self.base_freqs)  # [B, T, dim//2]
+
+        # 计算cos/sin
+        cos = torch.cos(freqs)  # [B, T, dim//2]
+        sin = torch.sin(freqs)  # [B, T, dim//2]
+
+        # 扩展维度以匹配旋转操作
+        cos = cos.reshape(B, T, 1, self.dim//2).repeat_interleave(2, dim=-1)  # [B, T, 1, D]
+        sin = sin.reshape(B, T, 1, self.dim//2).repeat_interleave(2, dim=-1)  # [B, T, 1, D]
+
+        # 应用旋转位置编码
+        def rotate_half(x):
+            x_rot = x.reshape(*x.shape[:-1], -1, 2)
+            x_rot = torch.stack((-x_rot[..., 1], x_rot[..., 0]), dim=-1)
+            return x_rot.reshape(*x.shape)
+
+        xq_rot = xq * cos + rotate_half(xq) * sin
+        xk_rot = xk * cos + rotate_half(xk) * sin
+
+        return xq_rot, xk_rot
+
 
 
 if __name__ == "__main__":

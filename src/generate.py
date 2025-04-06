@@ -77,6 +77,18 @@ class TextGenerator:
         generated_text = self.tokenizer.decode(generated_tokens)
         return generated_text
 
+    def generate_text_hf(self, prompt):
+        input_ids = self.tokenizer.encode(prompt)
+        input_ids = torch.tensor(input_ids, dtype=torch.long, device=self.device).unsqueeze(0)  # [1, seq_len]
+        output_ids = self.model.generate(input_ids,
+                                         max_new_tokens=self.max_tokens,
+                                         do_sample=True,
+                                         temperature=self.temperature,
+                                         top_k=self.top_k)
+        generated_text = self.tokenizer.decode(output_ids[0])
+        return generated_text
+
+
     # 在训练循环中生成文本的辅助函数
     def generate_examples(self):
         tprint("生成示例文本：")
@@ -88,7 +100,7 @@ class TextGenerator:
         tprint(f"\n提示: {prompt if prompt else '(无提示)'}")
         try:
             # 不再需要torch.no_grad()，因为generate_text方法已经处理了这个
-            generated = self.generate_text(prompt)
+            generated = self.generate_text_hf(prompt)
             tprint(f"生成: {generated}")
         except Exception as e:
             tprint(f"生成文本时发生错误: {str(e)}")

@@ -4,7 +4,7 @@ import glob
 import torch
 import shutil
 from log import tprint
-from config import ModuleConfig
+from config import ModelConfig
 import torch.distributed.checkpoint as dcp
 from torch.distributed.checkpoint.stateful import Stateful
 
@@ -31,7 +31,7 @@ class NormalCheckpointManager:
 
     def try_load_checkpoint(self, model, optimizer):
         # 添加ModuleConfig到安全globals列表中
-        torch.serialization.add_safe_globals([ModuleConfig])
+        torch.serialization.add_safe_globals([ModelConfig])
 
         # 尝试加载最新的checkpoint
         latest_checkpoint = self.get_latest_checkpoint()

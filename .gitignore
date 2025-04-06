@@ -16,3 +16,4 @@ checkpoints_dcp
 tools/train.log
 tools/Note.md
 *.distcp
+hf_baseline/qwen2.5-0.5b-finetuned
