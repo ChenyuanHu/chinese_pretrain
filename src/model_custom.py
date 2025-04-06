@@ -119,6 +119,7 @@ class CausalSelfAttention(nn.Module):
         )
 
     # 使用 torch.triu 避免初始化全 1 矩阵
+    @staticmethod
     def get_causal_mask(T, device, dtype):
         return torch.triu(torch.full((T, T), float('-inf'), dtype=dtype, device=device), diagonal=1)
 
@@ -128,7 +129,7 @@ class CausalSelfAttention(nn.Module):
         # 生成因果掩码（兼容HF格式）
         if attention_mask is not None:
             # 将注意力掩码转换为 additive mask
-            causal_mask = self.get_causal_mask(T, x.device, x.dtype)
+            causal_mask = CausalSelfAttention.get_causal_mask(T, x.device, x.dtype)
             causal_mask = causal_mask[None, None, :, :]
             if self.config.use_sliding_window:
                 window_mask = torch.ones_like(causal_mask)
