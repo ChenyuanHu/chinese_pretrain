@@ -81,6 +81,7 @@ class TextGenerator:
         input_ids = self.tokenizer.encode(prompt)
         input_ids = torch.tensor(input_ids, dtype=torch.long, device=self.device).unsqueeze(0)  # [1, seq_len]
         output_ids = self.model.generate(input_ids,
+                                         attention_mask=torch.ones_like(input_ids),
                                          max_new_tokens=self.max_tokens,
                                          do_sample=True,
                                          temperature=self.temperature,

@@ -22,7 +22,7 @@ class TrainConfig:
     run_mode = "both"
 
 # from model_qwen import QwenModel as Model
-from model_custom import CustomModelForCausalLM as Model
+from model_custom import CustomModelForCausalLM as Model, CustomModelConfig as ModelConfig
 
 # 模型参数
 class ModuleConfig2:
@@ -45,67 +45,6 @@ class ModuleConfig2:
     use_scaled_rope: bool = True
     use_block_checkpoint: int = 0 # 使用梯度检查点的block层数
 
-from transformers import PretrainedConfig
-class ModelConfig(PretrainedConfig):
-    model_type = "qwen2"
-
-    def __init__(
-        self,
-        vocab_size=152000,
-        hidden_size=768,
-        num_hidden_layers=16,
-        num_attention_heads=16,
-        num_key_value_heads=8,
-        max_position_embeddings=1024,
-        rope_theta=1000000.0,
-        hidden_act="silu",
-        intermediate_size=2048,
-        initializer_range=0.02,
-        rms_norm_eps=1e-06,
-        use_cache=True,
-        bos_token_id=151643,
-        eos_token_id=151643,
-        pad_token_id=151643,
-        attention_dropout=0.0,
-        tie_word_embeddings=True,
-        use_sliding_window=False,
-        sliding_window=None,
-        max_window_layers=24,
-        rope_scaling=None,
-        use_mrope=False,
-        use_sdpa=True,
-        torch_dtype="float32",
-        use_block_checkpoint=0,
-        flash_attn="FLASH_ATTENTION|EFFICIENT_ATTENTION|CUDNN_ATTENTION|MATH",
-        **kwargs
-    ):
-        super().__init__(**kwargs)
-        self.vocab_size = vocab_size
-        self.hidden_size = hidden_size
-        self.num_hidden_layers = num_hidden_layers
-        self.num_attention_heads = num_attention_heads
-        self.num_key_value_heads = num_key_value_heads
-        self.max_position_embeddings = max_position_embeddings
-        self.rope_theta = rope_theta
-        self.hidden_act = hidden_act
-        self.intermediate_size = intermediate_size
-        self.initializer_range = initializer_range
-        self.rms_norm_eps = rms_norm_eps
-        self.use_cache = use_cache
-        self.bos_token_id = bos_token_id
-        self.eos_token_id = eos_token_id
-        self.pad_token_id = pad_token_id
-        self.attention_dropout = attention_dropout
-        self.tie_word_embeddings = tie_word_embeddings
-        self.use_sliding_window = use_sliding_window
-        self.sliding_window = sliding_window
-        self.max_window_layers = max_window_layers
-        self.rope_scaling = rope_scaling
-        self.use_mrope = use_mrope
-        self.use_sdpa = use_sdpa
-        self.torch_dtype = torch_dtype
-        self.use_block_checkpoint = use_block_checkpoint
-        self.flash_attn = flash_attn
 
 from configs.data_sources import *
 

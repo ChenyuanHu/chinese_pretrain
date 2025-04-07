@@ -101,10 +101,17 @@ class CausalSelfAttention(nn.Module):
             self.flash_attn = True
 
         # key, query, value projections
-        self.c_attn = nn.Linear(config.hidden_size, (config.num_attention_heads + 2 * config.num_key_value_heads) * self.hd, bias=False)
+        self.q_proj = nn.Linear(config.hidden_size, config.num_attention_heads * self.hd, bias=True)
+        self.k_proj = nn.Linear(config.hidden_size, config.num_key_value_heads * self.hd, bias=True)
+        self.v_proj = nn.Linear(config.hidden_size, config.num_key_value_heads * self.hd, bias=True)
         # output projection
-        self.c_proj = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
-        self.c_proj.LLMC_RESIDUAL_SCALE_FLAG = 1
+        self.o_proj = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
+        self.o_proj.LLMC_RESIDUAL_SCALE_FLAG = 1
+
+        # not really a 'bias', more of a mask, but following the OpenAI/HF naming though
+        if not config.flash_attn:
+            self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
+                                        .view(1, 1, config.block_size, config.block_size))
 
     @staticmethod
     def repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
@@ -118,81 +125,49 @@ class CausalSelfAttention(nn.Module):
             .reshape(bs, slen, n_kv_heads * n_rep, head_dim)
         )
 
-    # 使用 torch.triu 避免初始化全 1 矩阵
-    @staticmethod
-    def get_causal_mask(T, device, dtype):
-        return torch.triu(torch.full((T, T), float('-inf'), dtype=dtype, device=device), diagonal=1)
-
-    def forward(self, x, attention_mask=None, past_key_value=None, **kwargs):
+    def forward(self, x):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality (hidden_size)
 
-        # 生成因果掩码（兼容HF格式）
-        if attention_mask is not None:
-            # 将注意力掩码转换为 additive mask
-            causal_mask = CausalSelfAttention.get_causal_mask(T, x.device, x.dtype)
-            causal_mask = causal_mask[None, None, :, :]
-            if self.config.use_sliding_window:
-                window_mask = torch.ones_like(causal_mask)
-                window_mask[:, :, :, :-self.sliding_window] = -torch.inf
-                causal_mask = torch.maximum(causal_mask, window_mask)
-            
-            attention_mask = attention_mask[:, None, None, :]
-            attention_mask = (1.0 - attention_mask) * torch.finfo(x.dtype).min
-            attention_mask = attention_mask + causal_mask
-        else:
-            attention_mask = torch.ones(T, T, dtype=torch.float32, device=x.device).tril()[None, None, :, :]
+        q = self.q_proj(x)
+        k = self.k_proj(x)
+        v = self.v_proj(x)
 
-        # calculate query, key, values for all heads in batch and move head forward to be the batch dim
-        qkv = self.c_attn(x)
+        q = q.view(B, T, self.num_attention_heads, self.hd)
+        k = k.view(B, T, self.num_key_value_heads, self.hd)
+        v = v.view(B, T, self.num_key_value_heads, self.hd)
 
-        q, k, v = qkv.split([self.num_attention_heads * self.hd, self.num_key_value_heads * self.hd, self.num_key_value_heads * self.hd], dim=-1)
-        q, k, v = map(lambda t: t.view(B, T, -1, self.hd), (q, k, v))  # (B, T, NH, HD)
-
-        # 合并KV缓存（如果存在）
-        if past_key_value is not None:
-            past_k, past_v = past_key_value
-            k = torch.cat([past_k, k], dim=1)  # 时间维度拼接
-            v = torch.cat([past_v, v], dim=1)
-
-        # 保存当前KV作为新的缓存
-        new_key_value = (k, v) if self.config.use_cache else None
-
-        # 计算位置IDs
-        seq_len = k.shape[1]  # 包含历史缓存后的总长度
-        position_ids = torch.arange(seq_len, device=x.device).expand(x.size(0), seq_len)
-        # 应用动态位置编码
-        q, k = self.rope.apply_rotary_emb_warp_position_ids(q, k, position_ids=position_ids)
+        q, k = self.rope.apply_rotary_emb_warp(q, k)
 
         k = self.repeat_kv(k, self.n_rep)  # GQA <-- 2. difference compared to GPT-2
         v = self.repeat_kv(v, self.n_rep)
 
-        q, k, v = map(lambda t: t.transpose(1, 2), (q, k, v))  # (B, NH, T, HD)
+        # 转置维度以进行注意力计算 [B, N, T, D]
+        q = q.transpose(1, 2)
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
 
         if self.flash_attn:
             # flashattention
             with sdpa_kernel(self.flash_attn_backends):
-                y = F.scaled_dot_product_attention(q, k, v,
-                                                   attn_mask=attention_mask,
-                                                   is_causal=False # 因为已经显式处理了mask
-                                                   )
+                y = F.scaled_dot_product_attention(q, k, v, dropout=0.0, is_causal=True)
         else:
             # manual implementation of attention
             # this materializes the large (T,T) matrix for all the queries and keys
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-            att = att + attention_mask
+            att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
             att = F.softmax(att, dim=-1)
             y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
         # output projection
-        y = self.c_proj(y)
-        return y, new_key_value
+        y = self.o_proj(y)
+        return y
 
 class MLP(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.gate_proj = nn.Linear(config.hidden_size, config.intermediate_size)
-        self.down_proj = nn.Linear(config.intermediate_size, config.hidden_size)
-        self.up_proj = nn.Linear(config.hidden_size, config.intermediate_size)
+        self.gate_proj = nn.Linear(config.hidden_size, config.intermediate_size, bias=False)
+        self.down_proj = nn.Linear(config.intermediate_size, config.hidden_size, bias=False)
+        self.up_proj = nn.Linear(config.hidden_size, config.intermediate_size, bias=False)
         
     def forward(self, x):
         return self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x))
@@ -208,37 +183,30 @@ class Block(nn.Module):
         self.id = id
 
     # 原始版本，没有显存优化
-    def forward_without_checkpoint(self, x, attention_mask=None, past_key_value=None):
-        attn_output, new_key_value = self.self_attn(self.input_layernorm(x), attention_mask=attention_mask, past_key_value=past_key_value)
-        x = x + attn_output
+    def forward_without_checkpoint(self, x):
+        x = x + self.self_attn(self.input_layernorm(x))
         x = x + self.mlp(self.post_attention_layernorm(x))
-        return x, new_key_value
+        return x
 
     # 使用激活检查点，性能降低18%，显存降低10%
-    def forward_with_checkpoint(self, x, attention_mask=None, past_key_value=None):
+    def forward_with_checkpoint(self, x):
         # 将前向传播分为两个检查段
-        def create_custom_forward_attn(module):
-            def custom_forward(*inputs):
-                return module(inputs[0], attention_mask=attention_mask, past_key_value=past_key_value)
-            return custom_forward
-            
-        def create_custom_forward_mlp(module):
+        def create_custom_forward(module):
             def custom_forward(*inputs):
                 return module(inputs[0])
             return custom_forward
         
         # 第一个检查段：注意力机制
-        attn_output, new_key_value = checkpoint(create_custom_forward_attn(self.self_attn), self.input_layernorm(x), use_reentrant=False)
-        x = x + attn_output
+        x = x + checkpoint(create_custom_forward(self.self_attn), self.input_layernorm(x), use_reentrant=False)
         # 第二个检查段：MLP
-        x = x + checkpoint(create_custom_forward_mlp(self.mlp), self.post_attention_layernorm(x), use_reentrant=False)
-        return x, new_key_value
+        x = x + checkpoint(create_custom_forward(self.mlp), self.post_attention_layernorm(x), use_reentrant=False)
+        return x
 
-    def forward(self, x, attention_mask=None, past_key_value=None):
+    def forward(self, x):
         if self.use_checkpoint > self.id:
-            return self.forward_with_checkpoint(x, attention_mask, past_key_value)
+            return self.forward_with_checkpoint(x)
         else:
-            return self.forward_without_checkpoint(x, attention_mask, past_key_value)
+            return self.forward_without_checkpoint(x)
 
 
 class CustomModelForCausalLM(PreTrainedModel, GenerationMixin):
@@ -254,15 +222,15 @@ class CustomModelForCausalLM(PreTrainedModel, GenerationMixin):
             use_scaled = config.use_mrope,
         )
 
-        self.transformer = nn.ModuleDict(dict(
-            wte = nn.Embedding(config.vocab_size, config.hidden_size),
-            h = nn.ModuleList([Block(config, self.rope, i) for i in range(config.num_hidden_layers)]),
-            ln_f = nn.RMSNorm(config.hidden_size, eps=config.rms_norm_eps),
+        self.model = nn.ModuleDict(dict(
+            embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size),
+            layers = nn.ModuleList([Block(config, self.rope, i) for i in range(config.num_hidden_layers)]),
+            norm = nn.RMSNorm(config.hidden_size, eps=config.rms_norm_eps),
         ))
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
         if config.tie_word_embeddings:
             self.lm_head.LLMC_SKIP_INIT = 1 # don't init this one, we will tie weights
-            self.transformer.wte.weight = self.lm_head.weight # https://paperswithcode.com/method/weight-tying
+            self.model.embed_tokens.weight = self.lm_head.weight # https://paperswithcode.com/method/weight-tying
 
         # init all weights
         self.apply(self._init_weights)
@@ -283,10 +251,10 @@ class CustomModelForCausalLM(PreTrainedModel, GenerationMixin):
             torch.nn.init.normal_(module.weight, mean=0.0, std=self.config.initializer_range)
 
     def get_input_embeddings(self):
-        return self.transformer.wte
+        return self.model.embed_tokens
 
     def set_input_embeddings(self, new_embeddings):
-        self.transformer.wte = new_embeddings
+        self.model.embed_tokens = new_embeddings
 
     def prepare_inputs_for_generation(
         self, 
@@ -295,33 +263,16 @@ class CustomModelForCausalLM(PreTrainedModel, GenerationMixin):
         attention_mask = None,
         **kwargs
     ):
-        # 合并历史长度与当前长度
-        past_length = past_key_values[0][0].size(1) if past_key_values else 0
-
-        # 扩展attention_mask
-        if attention_mask is not None:
-            attention_mask = torch.cat([
-                torch.ones(input_ids.size(0), past_length, device=input_ids.device),
-                attention_mask
-            ], dim=-1)
         
         return {
             "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "past_key_values": past_key_values,
         }
 
     def forward(self, input_ids, labels=None, past_key_values=None, attention_mask=None, **kwargs):
-        # 初始化缓存（如果第一次调用）
-        if past_key_values is None:
-            past_key_values = [None] * self.config.num_hidden_layers
-
-        x = self.transformer.wte(input_ids)
-        presents = []
-        for (block, past) in zip(self.transformer.h, past_key_values):
-            x, kv_cache = block(x, attention_mask=attention_mask, past_key_value=past)
-            presents.append(kv_cache)
-        x = self.transformer.ln_f(x)
+        x = self.model.embed_tokens(input_ids)
+        for block in self.model.layers:
+            x = block(x)
+        x = self.model.norm(x)
 
         if labels is not None:
             logits = self.lm_head(x)  # (batch_size, seq_len, vocab_size)
@@ -353,5 +304,5 @@ class CustomModelForCausalLM(PreTrainedModel, GenerationMixin):
         return CausalLMOutputWithPast(
             loss=loss,
             logits=logits,
-            past_key_values=presents,  # 如果实现了KV缓存，这里应该返回
+            past_key_values=None,  # 如果实现了KV缓存，这里应该返回
         )
