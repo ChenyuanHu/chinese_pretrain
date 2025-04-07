@@ -7,7 +7,7 @@ from env import TorchrunEnv
 from generate import TextGenerator
 from checkpoint import CheckpointManager
 from eval import EvaluateRunner
-from config import TrainConfig, ModelConfig, TrainDataConfig, Model
+from config import TrainConfig, model_config as input_model_config, TrainDataConfig, Model
 from log import tprint
 import gc
 
@@ -250,7 +250,7 @@ if __name__ == "__main__":
     random.seed(42)
 
     train_config = TrainConfig()
-    model_config = ModelConfig()
+    model_config = input_model_config
     train_data_config = TrainDataConfig()
     def config_to_dict(config):
         result = {}

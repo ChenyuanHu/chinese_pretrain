@@ -1,1 +1,1 @@
-from configs.rtx4080s_config import *
+from configs.m4pro_config import *

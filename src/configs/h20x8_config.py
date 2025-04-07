@@ -2,6 +2,7 @@
 class TrainConfig:
     batch_size = 2
     gradient_accumulation_steps = 2  # 梯度累积步数
+    block_size = 2048
 
     num_epochs = 10000 # 一般不结束
     scheduler_epochs = 100 # 调度器预期训练收敛需要的epoch数
@@ -12,31 +13,24 @@ class TrainConfig:
     save_dcp_checkpoint = True
     save_normal_checkpoint = False
 
-    compile = "FULL"
-    run_mode = "train" # train, generate, both
-
-from model_custom import CustomModel as Model
-
-# 模型参数
-class ModuleConfig:
-    block_size: int = 4096
-    vocab_size: int = 152000
-    n_layer: int = 32
-    n_head: int = 32
-    n_embd: int = 2560
-    n_kv_head: int = 8
-    tie_weights: bool = True
-    # flash attention. 可选值为 "FLASH_ATTENTION|EFFICIENT_ATTENTION|MATH|CUDNN_ATTENTION", 用竖线多选，为空禁用
-    flash_attn: str = "FLASH_ATTENTION"
     # amp
     dtype = "bfloat16"
-    # MLP
-    ffn_dim_multiplier: float = 1.3
-    multiple_of: int = 1024
-    # RoPE
-    rope_theta: float = 500000.0
-    use_scaled_rope: bool = True
-    use_block_checkpoint: int = 0 # 使用梯度检查点的block层数
+
+    compile = "FULL"
+    full_shard = False
+    run_mode = "train" # train, generate, both
+
+# from model_qwen import QwenModel as Model
+from model_custom import CustomModelForCausalLM as Model
+from model_custom import CustomModelConfig as ModelConfig
+
+model_config = ModelConfig(
+    hidden_size=2560,
+    num_hidden_layers=32,
+    num_attention_heads=32,
+    num_key_value_heads=8,
+    intermediate_size=6848,
+)
 
 from configs.data_sources import *
 
