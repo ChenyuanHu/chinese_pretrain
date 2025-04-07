@@ -149,7 +149,7 @@ class CausalSelfAttention(nn.Module):
         if self.flash_attn:
             # flashattention
             with sdpa_kernel(self.flash_attn_backends):
-                y = F.scaled_dot_product_attention(q, k, v, dropout=0.0, is_causal=True)
+                y = F.scaled_dot_product_attention(q, k, v, dropout_p=0.0, is_causal=True)
         else:
             # manual implementation of attention
             # this materializes the large (T,T) matrix for all the queries and keys
