@@ -9,6 +9,7 @@ from transformers import PretrainedConfig, PreTrainedModel
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.generation import GenerationMixin
 
+# default config, qwen2.5-0.5b
 class CustomModelConfig(PretrainedConfig):
     model_type = "qwen2"
 
