@@ -41,21 +41,21 @@ class Trainer:
         # 使用32位的AdamW优化器，设置betas和权重衰减
         self.optimizer = optim.AdamW(
             self.model.parameters(), 
-            lr=3e-5,  # 最大学习率
-            betas=(0.9, 0.95),  # beta1和beta2
-            weight_decay=0.01,  # 权重衰减
-            eps=1e-8,
+            lr=train_config.max_lr,  # 最大学习率
+            betas=train_config.betas,  # beta1和beta2
+            weight_decay=train_config.weight_decay,  # 权重衰减
+            eps=train_config.eps,
             foreach=True
         )
         # 创建学习率调度器，从预热到最大学习率3e-4，最终降至3e-5
         self.scheduler = optim.lr_scheduler.OneCycleLR(
             self.optimizer,
-            max_lr=3e-5,
+            max_lr=train_config.max_lr,
             total_steps=train_config.scheduler_epochs * train_config.steps_per_epoch,
-            pct_start=0.1,  # 预热阶段占总步数的10%
-            final_div_factor=10,  # 确保最终学习率为3e-5 (3e-4/10)
-            div_factor=10,  # 起始学习率为max_lr/10
-            anneal_strategy='cos'  # 余弦退火
+            pct_start=train_config.pct_start,
+            final_div_factor=train_config.final_div_factor,
+            div_factor=train_config.div_factor,
+            anneal_strategy=train_config.anneal_strategy
         )
         tprint(f"优化器初始化完成")
 
@@ -145,8 +145,11 @@ class Trainer:
                 current_time = time.time()
                 if self.env.local_rank == 0 and current_time - last_print_time >= 30:  # 每30秒打印一次
                     tokens_per_sec = total_train_tokens / (current_time - t0)
-                    current_lr = int(self.scheduler.get_last_lr()[0] * 1e5)
-                    tprint(f"Epoch {epoch+1}, Step {step+1}/{self.train_config.steps_per_epoch}, Loss: {loss.item():.4f}, LR: {current_lr:.2f}e-5, tokens/s/gpu: {tokens_per_sec:.2f}")
+                    current_lr = self.scheduler.get_last_lr()[0] * 1e5
+                    tprint(f"Epoch {epoch+1}, Step {step+1}/{self.train_config.steps_per_epoch}, "
+                           f"Loss: {loss.item():.4f}, "
+                           f"LR: {current_lr:.2f}e-5, "
+                           f"tokens/s/gpu: {tokens_per_sec:.2f}")
                     last_print_time = current_time
                     
             except Exception as e:
@@ -168,7 +171,10 @@ class Trainer:
             
             # 收集所有进程的样本时间统计
             if self.env.local_rank == 0:
-                tprint(f"样本获取时间统计 (进程 {self.env.rank}) - 平均: {avg_sample_time*1000:.2f}ms, 方差: {variance*1000*1000:.2f}ms², 最大: {max_sample_time*1000:.2f}ms, 最小: {min_sample_time*1000:.2f}ms")
+                tprint(f"样本获取时间统计 (进程 {self.env.rank}) - 平均: {avg_sample_time*1000:.2f}ms, "
+                       f"方差: {variance*1000*1000:.2f}ms², "
+                       f"最大: {max_sample_time*1000:.2f}ms, "
+                       f"最小: {min_sample_time*1000:.2f}ms")
 
         total_train_loss_tensor = torch.tensor(total_train_loss, device=self.env.device)
         total_train_tokens_tensor = torch.tensor(total_train_tokens, device=self.env.device)

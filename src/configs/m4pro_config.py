@@ -11,6 +11,17 @@ class TrainConfig:
     scheduler_epochs = 100 # 调度器预期训练收敛需要的epoch数
     steps_per_epoch = 200  # 每个epoch训练多少批次
 
+    # adamw优化器参数
+    max_lr = 3e-5
+    betas = (0.9, 0.95)
+    weight_decay = 0.01
+    eps = 1e-8
+    # 学习率调度器参数
+    pct_start = 0.1 # 预热阶段占总步数的10%
+    div_factor = 10 # 起始学习率为max_lr/10
+    final_div_factor = 10 # 最终学习率为max_lr/10
+    anneal_strategy = "cos" # 余弦退火
+
     # checkpoint config
     save_interval_sec = 180  # 每n秒保存一次模型
     save_dcp_checkpoint = False
