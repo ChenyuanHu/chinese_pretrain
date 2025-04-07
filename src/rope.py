@@ -131,7 +131,6 @@ class RoPEv2:
         return x_rot.reshape(*x.shape)
 
 
-
 if __name__ == "__main__":
     dim = 128
     rope = RoPE(dim)
