@@ -194,11 +194,11 @@ class Trainer:
 
         t1 = time.time()
         data_progress_percentage = self.data_loader.get_data_progress_percentage()
-        current_lr = int(self.scheduler.get_last_lr()[0] * 1e5)
+        current_lr = self.scheduler.get_last_lr()[0] * 1e5
         tprint(f"Epoch [{epoch+1}/{self.train_config.num_epochs}], {(t1-t0):.2f}sec, "
             f"world {global_tokens_per_sec:.2f} tokens/s, "
             f"训练损失: {global_avg_train_loss:.4f}, 困惑度: {global_train_ppl:.4f}, "
-            f"LR: {current_lr}e-5")
+            f"LR: {current_lr:.2f}e-5")
 
 
         #tprint(f"全局验证损失: {global_eval_avg_loss:.4f}, 困惑度: {global_eval_ppl:.4f}")
