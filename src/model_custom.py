@@ -75,9 +75,12 @@ class CustomModelConfig(PretrainedConfig):
 class CausalSelfAttention(nn.Module):
     def __init__(self, config, rope):
         super().__init__()
+        # 添加头数验证
+        assert config.num_attention_heads % config.num_key_value_heads == 0
+        assert config.hidden_size % config.num_attention_heads == 0
+
         self.config = config
 
-        assert config.hidden_size % config.num_attention_heads == 0
         # regularization
         self.num_attention_heads = config.num_attention_heads
         self.hidden_size = config.hidden_size
@@ -107,12 +110,11 @@ class CausalSelfAttention(nn.Module):
         self.v_proj = nn.Linear(config.hidden_size, config.num_key_value_heads * self.hd, bias=True)
         # output projection
         self.o_proj = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
-        self.o_proj.LLMC_RESIDUAL_SCALE_FLAG = 1
 
-        # not really a 'bias', more of a mask, but following the OpenAI/HF naming though
-        if not config.flash_attn:
-            self.register_buffer("bias", torch.tril(torch.ones(config.max_position_embeddings, config.max_position_embeddings))
-                                        .view(1, 1, config.max_position_embeddings, config.max_position_embeddings))
+        self.q_proj.LLMC_RESIDUAL_SCALE_FLAG = 1
+        self.k_proj.LLMC_RESIDUAL_SCALE_FLAG = 1
+        self.v_proj.LLMC_RESIDUAL_SCALE_FLAG = 1
+        self.o_proj.LLMC_RESIDUAL_SCALE_FLAG = 1
 
     @staticmethod
     def repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
@@ -155,7 +157,8 @@ class CausalSelfAttention(nn.Module):
             # manual implementation of attention
             # this materializes the large (T,T) matrix for all the queries and keys
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-            att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
+            causal_mask = torch.triu(torch.ones(T, T, dtype=torch.bool), diagonal=1).to(x.device)
+            att = att.masked_fill(causal_mask, float('-inf'))
             att = F.softmax(att, dim=-1)
             y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
@@ -167,8 +170,10 @@ class MLP(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.gate_proj = nn.Linear(config.hidden_size, config.intermediate_size, bias=False)
+        self.gate_proj.LLMC_RESIDUAL_SCALE_FLAG = 1
         self.down_proj = nn.Linear(config.intermediate_size, config.hidden_size, bias=False)
         self.up_proj = nn.Linear(config.hidden_size, config.intermediate_size, bias=False)
+        self.up_proj.LLMC_RESIDUAL_SCALE_FLAG = 1
         
     def forward(self, x):
         return self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x))
@@ -185,22 +190,22 @@ class Block(nn.Module):
 
     # 原始版本，没有显存优化
     def forward_without_checkpoint(self, x):
-        x = x + self.self_attn(self.input_layernorm(x))
-        x = x + self.mlp(self.post_attention_layernorm(x))
+        attn_out = self.self_attn(self.input_layernorm(x))
+        x = x + attn_out
+        mlp_out = self.mlp(self.post_attention_layernorm(x))
+        x = x + mlp_out
         return x
 
-    # 使用激活检查点，性能降低18%，显存降低10%
     def forward_with_checkpoint(self, x):
-        # 将前向传播分为两个检查段
-        def create_custom_forward(module):
-            def custom_forward(*inputs):
-                return module(inputs[0])
-            return custom_forward
+        def attn_forward(x):
+            return self.self_attn(self.input_layernorm(x))
         
-        # 第一个检查段：注意力机制
-        x = x + checkpoint(create_custom_forward(self.self_attn), self.input_layernorm(x), use_reentrant=False)
-        # 第二个检查段：MLP
-        x = x + checkpoint(create_custom_forward(self.mlp), self.post_attention_layernorm(x), use_reentrant=False)
+        def mlp_forward(x):
+            return self.mlp(self.post_attention_layernorm(x))
+        
+        # 包含LayerNorm在检查点内
+        x = x + checkpoint(attn_forward, x, use_reentrant=False)
+        x = x + checkpoint(mlp_forward, x, use_reentrant=False)
         return x
 
     def forward(self, x):
@@ -278,16 +283,12 @@ class CustomModelForCausalLM(PreTrainedModel, GenerationMixin):
         if labels is not None:
             logits = self.lm_head(x)  # (batch_size, seq_len, vocab_size)
 
-            # 更高效的标签右移与掩码处理
-            shifted_labels = torch.full_like(labels, -100)  # 初始化为全 -100
-            shifted_labels[:, :-1] = labels[:, 1:]       # 右移：将 labels[1:] 复制到 shifted_labels 的前 n-1 列
-
-            # 直接计算损失（无需手动拼接）
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
             loss = F.cross_entropy(
-                logits.view(-1, logits.size(-1)),
-                shifted_labels.view(-1),
+                shift_logits.view(-1, self.config.vocab_size),
+                shift_labels.view(-1),
                 ignore_index=-100,
-                #reduction='none'
                 reduction='mean'
             )
 
