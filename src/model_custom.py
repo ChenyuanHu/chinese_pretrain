@@ -111,8 +111,8 @@ class CausalSelfAttention(nn.Module):
 
         # not really a 'bias', more of a mask, but following the OpenAI/HF naming though
         if not config.flash_attn:
-            self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
-                                        .view(1, 1, config.block_size, config.block_size))
+            self.register_buffer("bias", torch.tril(torch.ones(config.max_position_embeddings, config.max_position_embeddings))
+                                        .view(1, 1, config.max_position_embeddings, config.max_position_embeddings))
 
     @staticmethod
     def repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
