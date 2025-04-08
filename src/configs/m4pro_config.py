@@ -5,11 +5,11 @@
 class TrainConfig:
     batch_size = 4
     gradient_accumulation_steps = 1  # 梯度累积步数
-    block_size = 1024
+    block_size = 512
 
     num_epochs = 10000 # 一般不结束
     scheduler_epochs = 100 # 调度器预期训练收敛需要的epoch数
-    steps_per_epoch = 200  # 每个epoch训练多少批次
+    steps_per_epoch = 1000  # 每个epoch训练多少批次
 
     # adamw优化器参数
     max_lr = 3e-5
@@ -23,7 +23,7 @@ class TrainConfig:
     anneal_strategy = "cos" # 余弦退火
 
     # checkpoint config
-    save_interval_sec = 180  # 每n秒保存一次模型
+    save_interval_sec = 600  # 每n秒保存一次模型
     save_dcp_checkpoint = False
     save_normal_checkpoint = True
 
@@ -40,9 +40,10 @@ from model_custom import CustomModelConfig as ModelConfig
 model_config = ModelConfig(
     hidden_size=512,
     num_hidden_layers=16,
-    num_attention_heads=16,
-    num_key_value_heads=8,
-    intermediate_size=1024,
+    num_attention_heads=8,
+    num_key_value_heads=2,
+    intermediate_size=2048,
+    max_position_embeddings=TrainConfig.block_size,
 )
 
 from configs.data_sources import *
