@@ -131,6 +131,9 @@ class CausalSelfAttention(nn.Module):
     def forward(self, x):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality (hidden_size)
 
+        # 添加位置编码长度验证
+        assert T <= self.config.max_position_embeddings
+
         q = self.q_proj(x)
         k = self.k_proj(x)
         v = self.v_proj(x)
@@ -157,7 +160,7 @@ class CausalSelfAttention(nn.Module):
             # manual implementation of attention
             # this materializes the large (T,T) matrix for all the queries and keys
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-            causal_mask = torch.triu(torch.ones(T, T, dtype=torch.bool), diagonal=1).to(x.device)
+            causal_mask = torch.triu(torch.ones(T, T, dtype=torch.bool, device=x.device), diagonal=1)
             att = att.masked_fill(causal_mask, float('-inf'))
             att = F.softmax(att, dim=-1)
             y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
@@ -170,11 +173,13 @@ class MLP(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.gate_proj = nn.Linear(config.hidden_size, config.intermediate_size, bias=False)
-        self.gate_proj.LLMC_RESIDUAL_SCALE_FLAG = 1
         self.down_proj = nn.Linear(config.intermediate_size, config.hidden_size, bias=False)
         self.up_proj = nn.Linear(config.hidden_size, config.intermediate_size, bias=False)
+
+        self.gate_proj.LLMC_RESIDUAL_SCALE_FLAG = 1
+        self.down_proj.LLMC_RESIDUAL_SCALE_FLAG = 1
         self.up_proj.LLMC_RESIDUAL_SCALE_FLAG = 1
-        
+
     def forward(self, x):
         return self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x))
 
@@ -197,15 +202,18 @@ class Block(nn.Module):
         return x
 
     def forward_with_checkpoint(self, x):
-        def attn_forward(x):
-            return self.self_attn(self.input_layernorm(x))
+        # 重构检查点函数
+        def attn_block(x):
+            _x = self.input_layernorm(x)
+            return self.self_attn(_x)
         
-        def mlp_forward(x):
-            return self.mlp(self.post_attention_layernorm(x))
+        def mlp_block(x):
+            _x = self.post_attention_layernorm(x)
+            return self.mlp(_x)
         
-        # 包含LayerNorm在检查点内
-        x = x + checkpoint(attn_forward, x, use_reentrant=False)
-        x = x + checkpoint(mlp_forward, x, use_reentrant=False)
+        # 确保完整计算图
+        x = x + checkpoint(attn_block, x, use_reentrant=False, preserve_rng_state=False)
+        x = x + checkpoint(mlp_block, x, use_reentrant=False, preserve_rng_state=False)
         return x
 
     def forward(self, x):
