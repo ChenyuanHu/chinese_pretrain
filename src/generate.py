@@ -78,6 +78,7 @@ class TextGenerator:
         return generated_text
 
     def generate_text_hf(self, prompt):
+        prompt = self.tokenizer.bos_token + prompt
         input_ids = self.tokenizer.encode(prompt)
         input_ids = torch.tensor(input_ids, dtype=torch.long, device=self.device).unsqueeze(0)  # [1, seq_len]
         output_ids = self.model.generate(input_ids,
